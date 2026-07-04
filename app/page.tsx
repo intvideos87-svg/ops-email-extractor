@@ -24,25 +24,27 @@ type FlagResult = {
 };
 
 type ExtractionResult = {
-  snapshot: FieldValue[];
-  timeline: FieldValue[];
+  source: "Quick Extract" | "AI Deep Extract";
+  basics: FieldValue[];
+  delivery: FieldValue[];
+  flight: FieldValue[];
   flags: FlagResult[];
-  missing: string[];
-  checklist: string[];
+  permit: FieldValue[];
+  opsNotes: Evidence[];
   evidence: Evidence[];
   cleanedEmail: string;
 };
 
 const notMentioned = "Not mentioned";
 
-const snapshotFields = [
+const basicsFields = [
   {
-    label: "Shipper",
-    patterns: [/^\s*(shipper|shipper name)\s*[:\-]\s*(.+)$/i]
-  },
-  {
-    label: "Consignee",
-    patterns: [/^\s*(consignee|receiver|consignee name)\s*[:\-]\s*(.+)$/i]
+    label: "AWB / HAWB",
+    patterns: [
+      /\b(?:mawb|awb|air waybill)\s*(?:no\.?|number|#)?\s*[:\-]?\s*([0-9]{3}-[0-9]{8})\b/i,
+      /\b(?:hawb|house awb)\s*(?:no\.?|number|#)?\s*[:#\-]?\s*([A-Z0-9-]{4,})\b/i,
+      /\b(SGMTCT[0-9A-Z]{4,})\b/i
+    ]
   },
   {
     label: "Origin",
@@ -53,125 +55,57 @@ const snapshotFields = [
     patterns: [/^\s*(destination|dest|destination airport)\s*[:\-]\s*(.+)$/i, /\b([A-Z]{3})\s*(?:-|to)\s*([A-Z]{3})\b/i]
   },
   {
-    label: "AWB number",
-    patterns: [/\b(?:mawb|awb|air waybill)\s*(?:no\.?|number|#)?\s*[:\-]?\s*([0-9]{3}-[0-9]{8})\b/i]
-  },
-  {
-    label: "HAWB number",
-    patterns: [/\b(?:hawb|house awb)\s*(?:no\.?|number|#)?\s*[:#\-]?\s*([A-Z0-9-]{4,})\b/i, /\b(SGMTCT[0-9A-Z]{4,})\b/i]
-  },
-  {
     label: "Pieces",
     patterns: [/\b(?:pieces|piece|pcs|pkgs|packages)\s*[:\-]?\s*([0-9,]+\s*(?:pcs|pieces|pkgs|packages|ctns|cartons)?)\b/i]
   },
   {
-    label: "Gross weight",
-    patterns: [/\b(?:gross weight|g\/w|gw)\s*[:\-]?\s*([0-9,.]+\s*(?:kgs?|kg|lbs?|lb))\b/i]
-  },
-  {
-    label: "Chargeable weight",
-    patterns: [/\b(?:chargeable weight|c\/w|cw)\s*[:\-]?\s*([0-9,.]+\s*(?:kgs?|kg|lbs?|lb))\b/i]
-  },
-  {
-    label: "Dimensions",
-    patterns: [/\b(?:dimensions?|dims?|dimension)\s*[:\-]?\s*(.+)$/i, /\b([0-9,.]+\s*[xX]\s*[0-9,.]+\s*[xX]\s*[0-9,.]+\s*(?:cm|mm|m|in|inch|inches)?)\b/i]
+    label: "Weight",
+    patterns: [/\b(?:gross weight|g\/w|gw|weight|wt)\s*[:\-]?\s*([0-9,.]+\s*(?:kgs?|kg|lbs?|lb))\b/i]
   },
   {
     label: "Commodity",
     patterns: [/^\s*(commodity|goods description|description of goods)\s*[:\-]\s*(.+)$/i]
-  },
-  {
-    label: "Invoice number",
-    patterns: [/\b(?:invoice|commercial invoice|inv)\s*(?:no\.?|number|#)?\s*[:\-]?\s*([A-Z0-9-\/]+)\b/i]
-  },
-  {
-    label: "Packing list number",
-    patterns: [/\b(?:packing list|packing list no\.?|pl no\.?|p\/l)\s*(?:no\.?|number|#)?\s*[:\-]?\s*([A-Z0-9-\/]+)\b/i]
   }
 ];
 
-const timelineFields = [
+const deliveryFields = [
   {
-    label: "Cargo collection date",
-    patterns: [/\b(?:collection date|pickup date|pick up date|collect on|cargo ready date|truck date|driver date|warehouse date|delivery date)\s*[:\-]?\s*(.+)$/i]
+    label: "Delivery type",
+    patterns: [/\b(arrange collection|collection|pickup|pick up|collect|truck in|self[-\s]?deliver|send to warehouse|deliver cargo|delivery)\b/i]
   },
   {
-    label: "Cargo collection time",
-    patterns: [/\b(?:collection time|pickup time|pick up time|collect at|cargo ready time|truck time|driver time|warehouse time|delivery time)\s*[:\-]?\s*(.+)$/i]
+    label: "Collection / Delivery date",
+    patterns: [/\b(?:collection date|pickup date|pick up date|collect on|cargo ready date|truck in date|truck date|delivery date|deliver cargo on|send to warehouse on)\s*[:\-]?\s*(.+)$/i]
   },
   {
-    label: "Collection address",
-    patterns: [/^\s*(collection address|pickup address|pick up address|collect from)\s*[:\-]\s*(.+)$/i]
-  },
-  {
-    label: "Collection contact person",
-    patterns: [/^\s*(contact person|pickup contact|collection contact|attn)\s*[:\-]\s*(.+)$/i]
-  },
-  {
-    label: "Collection contact number",
-    patterns: [/\b(?:contact number|contact no\.?|mobile|tel|phone|hp)\s*[:\-]?\s*([+()0-9\s-]{6,})\b/i]
-  },
-  {
-    label: "Warehouse receiving time",
-    patterns: [/\b(?:warehouse receiving time|receiving time|warehouse receive by|warehouse opens?)\s*[:\-]?\s*(.+)$/i]
-  },
-  {
-    label: "Cut-off time",
-    patterns: [/\b(?:cut[-\s]?off|cut off time|closing time)\s*[:\-]?\s*(.+)$/i]
-  },
+    label: "Collection / Delivery time",
+    patterns: [/\b(?:collection time|pickup time|pick up time|collect at|cargo ready time|truck in time|truck time|delivery time|deliver cargo at|send to warehouse at)\s*[:\-]?\s*(.+)$/i]
+  }
+];
+
+const flightFields = [
   {
     label: "Flight date",
-    patterns: [/\b(?:flight date|flt date)\s*[:\-]?\s*(.+)$/i]
+    patterns: [/\b(?:flight date|flt date|flight on|departure date|uplift date)\s*[:\-]?\s*(.+)$/i]
   },
   {
     label: "Flight number",
     patterns: [/\b(?:flight|flt|flight no\.?|flight number)\s*[:\-]?\s*([A-Z0-9]{2,3}\s?[0-9]{2,4}[A-Z]?)\b/i]
   },
   {
-    label: "ETD",
-    patterns: [/\bETD\s*[:\-]?\s*(.+)$/i]
-  },
-  {
-    label: "ETA",
-    patterns: [/\bETA\s*[:\-]?\s*(.+)$/i]
-  },
-  {
-    label: "Required delivery date",
-    patterns: [/\b(?:required delivery date|delivery date|deliver by)\s*[:\-]?\s*(.+)$/i]
-  },
-  {
-    label: "Required delivery time",
-    patterns: [/\b(?:required delivery time|delivery time)\s*[:\-]?\s*(.+)$/i]
+    label: "Cut-off",
+    patterns: [/\b(?:cut[-\s]?off|cut off time|closing time)\s*[:\-]?\s*(.+)$/i]
   }
 ];
 
 const flags = [
-  { label: "Fumigation", terms: ["fumigation", "fumigated", "fumigation cert"] },
-  { label: "ISPM15", terms: ["ISPM15", "ISPM 15"] },
-  { label: "Wooden packaging", terms: ["wooden packaging", "wooden crate", "wooden pallet", "wood packing"] },
-  { label: "Battery", terms: ["battery", "batteries"] },
-  { label: "Lithium battery", terms: ["lithium", "lithium ion", "lithium metal", "UN3480", "UN3481"] },
-  { label: "Dangerous goods / DG / DGR", terms: ["dangerous goods", "dgr", "dg", "un number"] },
-  { label: "MSDS", terms: ["msds"] },
-  { label: "DGD", terms: ["dgd"] },
+  { label: "Battery / Lithium", terms: ["battery", "batteries", "lithium", "lithium ion", "lithium metal", "UN3480", "UN3481"] },
+  { label: "DG / DGR", terms: ["dangerous goods", "dgr", "dg", "dgd", "msds", "un number"] },
+  { label: "Fumigation", terms: ["fumigation", "fumigated", "fumigation cert", "ISPM15", "ISPM 15"] },
   { label: "Perishable", terms: ["perishable", "fresh", "food", "meat", "seafood", "vegetable"] },
   { label: "Temperature control", terms: ["temp", "temperature", "chilled", "frozen", "cool", "ambient"] },
-  { label: "Frozen / chilled / ambient", terms: ["frozen", "chilled", "ambient"] },
-  { label: "Equipment cargo", terms: ["equipment", "machine", "machinery"] },
-  { label: "Oversized cargo", terms: ["oversized", "OOG", "over gauge"] },
-  { label: "Heavy cargo", terms: ["heavy cargo", "heavy shipment", "heavy piece"] },
-  { label: "Stackable", terms: ["stackable"] },
   { label: "Non-stackable", terms: ["non-stackable", "non stackable", "not stackable"] },
-  { label: "Fragile", terms: ["fragile"] },
-  { label: "Urgent shipment", terms: ["urgent", "asap", "immediate"] },
-  { label: "Same-day uplift", terms: ["same day", "today uplift", "same-day uplift"] },
-  { label: "Permit", terms: ["permit"] },
-  { label: "Export permit", terms: ["export permit"] },
-  { label: "Import permit", terms: ["import permit"] },
-  { label: "COO", terms: ["coo", "certificate of origin"] },
-  { label: "Insurance", terms: ["insurance", "insured"] },
-  { label: "Pivot weight", terms: ["pivot weight"] },
-  { label: "Special airline instruction", terms: ["special airline instruction", "airline instruction", "airline instructions"] }
+  { label: "Pivot weight", terms: ["pivot weight"] }
 ];
 
 const sampleEmail = `Subject: SIN export - urgent uplift request
@@ -198,9 +132,6 @@ Packing list no: PL-77821
 
 Collection date: 05 Jul 2026
 Collection time: 10:30
-Collection address: 10 Tuas Avenue 8, Singapore
-Contact person: Mr Tan
-Contact number: +65 6123 8899
 Cut-off time: 16:00
 Flight date: 05 Jul 2026
 Flight: SQ326
@@ -209,7 +140,9 @@ ETA: 06 Jul 2026 06:20
 
 Fumigation cert will follow.
 Battery packed with equipment. MSDS attached.
-Cargo is non-stackable. Urgent same day uplift required.
+Cargo is non-stackable.
+Permit under shipper account.
+Export ops pls take note: check fumigation cert before lodge-in.
 
 Regards,
 Customer Service`;
@@ -400,6 +333,106 @@ function hasCollectionContext(line: string) {
   return /\b(collection|pickup|pick up|collect|truck|driver|cargo ready|delivery|warehouse)\b/i.test(line);
 }
 
+function detectDeliveryType(lines: string[]): FieldValue {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/\b(self[-\s]?deliver|send to warehouse|deliver cargo|truck in)\b/i.test(line)) {
+      return {
+        label: "Delivery type",
+        value: "Self-delivery",
+        evidence: { line: index + 1, text: line }
+      };
+    }
+    if (/\b(arrange collection|collection|pickup|pick up|collect)\b/i.test(line)) {
+      return {
+        label: "Delivery type",
+        value: "Collection",
+        evidence: { line: index + 1, text: line }
+      };
+    }
+  }
+
+  return { label: "Delivery type", value: notMentioned };
+}
+
+function detectAwbHawb(lines: string[]): FieldValue {
+  let awb: FieldValue | null = null;
+  let hawb: FieldValue | null = null;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!awb) {
+      const match = line.match(/\b(?:mawb|awb|air waybill)\s*(?:no\.?|number|#)?\s*[:\-]?\s*([0-9]{3}-[0-9]{8})\b/i);
+      if (match) awb = { label: "AWB / HAWB", value: `AWB: ${match[1]}`, evidence: { line: index + 1, text: line } };
+    }
+    if (!hawb) {
+      const match = line.match(/\b(?:hawb|house awb)\s*(?:no\.?|number|#)?\s*[:#\-]?\s*([A-Z0-9-]{4,})\b/i) || line.match(/\b(SGMTCT[0-9A-Z]{4,})\b/i);
+      if (match) hawb = { label: "AWB / HAWB", value: `HAWB: ${match[1]}`, evidence: { line: index + 1, text: line } };
+    }
+  }
+
+  const values = [awb?.value, hawb?.value].filter(Boolean);
+  if (!values.length) return { label: "AWB / HAWB", value: notMentioned };
+
+  return {
+    label: "AWB / HAWB",
+    value: values.join(" / "),
+    evidence: awb?.evidence || hawb?.evidence
+  };
+}
+
+function detectPermit(lines: string[]): FieldValue[] {
+  const permitMention = findFlag(lines, "Permit", ["permit", "export permit"]);
+  if (permitMention.status === "Not mentioned") {
+    return [
+      { label: "Permit status", value: notMentioned },
+      { label: "Declaration responsibility", value: notMentioned },
+      { label: "Type of permit", value: notMentioned }
+    ];
+  }
+
+  let responsibility = "Permit mentioned - declaration responsibility unclear";
+  let responsibilityEvidence = permitMention.evidence;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/\b(permit under shipper account|shipper self declare|shipper self[-\s]?declared|self declare permit)\b/i.test(line)) {
+      responsibility = "Permit self-declared by shipper";
+      responsibilityEvidence = { line: index + 1, text: line };
+      break;
+    }
+    if (/\b(please declare permit|permit under our permit|we declare permit|ops declare permit|export ops.*declare permit|declare export permit)\b/i.test(line)) {
+      responsibility = "Permit to be declared by us / export ops";
+      responsibilityEvidence = { line: index + 1, text: line };
+      break;
+    }
+  }
+
+  const typeField = findField(lines, "Type of permit", [/\b(export permit|import permit|transhipment permit|strategic goods permit|permit)\b/i]);
+
+  return [
+    { label: "Permit status", value: "Permit required", evidence: permitMention.evidence },
+    { label: "Declaration responsibility", value: responsibility, evidence: responsibilityEvidence },
+    typeField.value === notMentioned ? { label: "Type of permit", value: notMentioned } : typeField
+  ];
+}
+
+function findOpsNotes(lines: string[]): Evidence[] {
+  const notes: Evidence[] = [];
+  const patterns = [
+    /\b(export ops pls take note|export ops please take note|ops please note|ops pls note|pls take note|please take note|team please note|warehouse please note)\b/i,
+    /^\s*(important|note)\s*[:\-]/i
+  ];
+
+  lines.forEach((line, index) => {
+    if (patterns.some((pattern) => pattern.test(line))) {
+      notes.push({ line: index + 1, text: line });
+    }
+  });
+
+  return notes;
+}
+
 function findField(lines: string[], label: string, patterns: RegExp[]): FieldValue {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
@@ -486,60 +519,23 @@ function extractDetails(input: string): ExtractionResult {
     .map((line) => line.trim())
     .filter(Boolean);
 
-  const snapshot = snapshotFields.map((field) => findField(lines, field.label, field.patterns));
-  const timeline = timelineFields.map((field) => findField(lines, field.label, field.patterns));
+  const basics = basicsFields.map((field) => (field.label === "AWB / HAWB" ? detectAwbHawb(lines) : findField(lines, field.label, field.patterns)));
+  const delivery = deliveryFields.map((field) => (field.label === "Delivery type" ? detectDeliveryType(lines) : findField(lines, field.label, field.patterns)));
+  const flight = flightFields.map((field) => findField(lines, field.label, field.patterns));
   const flagResults = flags.map((flag) => findFlag(lines, flag.label, flag.terms));
-
-  const getValue = (label: string) => [...snapshot, ...timeline].find((item) => item.label === label)?.value || notMentioned;
-  const getFlag = (label: string) => flagResults.find((item) => item.label === label)?.status || "Not mentioned";
-
-  const missingChecks = [
-    ["Collection date", getValue("Cargo collection date")],
-    ["Collection time", getValue("Cargo collection time")],
-    ["Pickup address", getValue("Collection address")],
-    ["Contact person", getValue("Collection contact person")],
-    ["Contact number", getValue("Collection contact number")],
-    ["Pieces", getValue("Pieces")],
-    ["Weight", getValue("Gross weight")],
-    ["Dimensions", getValue("Dimensions")],
-    ["Commodity", getValue("Commodity")],
-    ["Flight date", getValue("Flight date")],
-    ["AWB number", getValue("AWB number")],
-    ["DG status", getFlag("Dangerous goods / DG / DGR")],
-    ["Battery status", getFlag("Battery") === "Mentioned" || getFlag("Lithium battery") === "Mentioned" ? "Mentioned" : notMentioned],
-    ["Fumigation status", getFlag("Fumigation") === "Mentioned" || getFlag("ISPM15") === "Mentioned" ? "Mentioned" : notMentioned]
-  ];
-
-  const missing = missingChecks.filter(([, value]) => value === notMentioned).map(([label]) => label);
-  const checklist = new Set<string>();
-
-  if (getValue("Cargo collection date") !== notMentioned || getValue("Cargo collection time") !== notMentioned) {
-    checklist.add("Confirm collection timing");
-    checklist.add("Confirm driver arrangement");
-  }
-  if (getValue("Cut-off time") !== notMentioned) checklist.add("Check cut-off timing");
-  if (getValue("Flight number") !== notMentioned || getValue("Flight date") !== notMentioned) checklist.add("Verify booking");
-  if (getFlag("Fumigation") === "Mentioned" || getFlag("ISPM15") === "Mentioned") checklist.add("Check fumigation cert");
-  if (getFlag("Dangerous goods / DG / DGR") === "Mentioned" || getFlag("DGD") === "Mentioned") checklist.add("Check DG declaration");
-  if (getFlag("Battery") === "Mentioned" || getFlag("Lithium battery") === "Mentioned") checklist.add("Check battery documents and airline acceptance");
-  if (getFlag("Temperature control") === "Mentioned") checklist.add("Confirm temperature handling instruction");
-  if (missing.includes("Dimensions")) checklist.add("Request dimensions");
-  if (missing.includes("Contact person") || missing.includes("Contact number")) checklist.add("Request missing contact details");
-  if (missing.includes("Pickup address")) checklist.add("Request pickup address");
-  if (missing.includes("Pieces") || missing.includes("Weight")) checklist.add("Request missing shipment quantity or weight");
-  if (missing.includes("DG status")) checklist.add("Confirm DG status");
-  if (missing.includes("Battery status")) checklist.add("Confirm battery status");
-  if (missing.includes("Fumigation status")) checklist.add("Confirm fumigation status");
-
-  if (checklist.size === 0) checklist.add("Review extracted evidence before acting");
+  const mentionedFlags = flagResults.filter((flag) => flag.status === "Mentioned");
+  const permit = detectPermit(lines);
+  const opsNotes = findOpsNotes(lines);
 
   return {
-    snapshot,
-    timeline,
-    flags: flagResults,
-    missing,
-    checklist: Array.from(checklist),
-    evidence: uniqueEvidence([...snapshot, ...timeline, ...flagResults]),
+    source: "Quick Extract",
+    basics,
+    delivery,
+    flight,
+    flags: mentionedFlags,
+    permit,
+    opsNotes,
+    evidence: uniqueEvidence([...basics, ...delivery, ...flight, ...mentionedFlags, ...permit, ...opsNotes.map((evidence) => ({ label: "Export Ops Note", value: evidence.text, evidence }))]),
     cleanedEmail
   };
 }
@@ -549,12 +545,14 @@ function buildSummary(result: ExtractionResult) {
 
   return [
     "Ops Email Extractor Summary",
+    `Mode: ${result.source}`,
     "",
-    section("Shipment Snapshot", result.snapshot.map((item) => `${item.label}: ${item.value}`)),
-    section("Operational Timeline", result.timeline.map((item) => `${item.label}: ${item.value}`)),
-    section("Special Handling Flags", result.flags.map((item) => `${item.label}: ${item.status}${item.evidence ? ` | Line ${item.evidence.line}: ${item.evidence.text}` : ""}`)),
-    section("Missing Information", result.missing.length ? result.missing : ["None based on configured checks"]),
-    section("Action Checklist", result.checklist),
+    section("Shipment Basics", result.basics.map((item) => `${item.label}: ${item.value}`)),
+    section("Delivery Method", result.delivery.map((item) => `${item.label}: ${item.value}`)),
+    section("Flight Details", result.flight.map((item) => `${item.label}: ${item.value}`)),
+    section("Critical Cargo Flags", result.flags.length ? result.flags.map((item) => `${item.label}: ${item.status}${item.evidence ? ` | Line ${item.evidence.line}: ${item.evidence.text}` : ""}`) : ["No critical cargo flags explicitly mentioned"]),
+    section("Permit Declaration", result.permit.map((item) => `${item.label}: ${item.value}`)),
+    section("Export Ops Notes", result.opsNotes.length ? result.opsNotes.map((item) => `Line ${item.line}: ${item.text}`) : ["No direct export ops notes found"]),
     section("Evidence", result.evidence.map((item) => `Line ${item.line}: ${item.text}`)),
     section("Cleaned Email Preview", result.cleanedEmail ? result.cleanedEmail.split("\n") : ["No analyzable text after cleaning"])
   ].join("\n");
@@ -565,6 +563,7 @@ export default function Home() {
   const [fileName, setFileName] = useState("");
   const [message, setMessage] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+  const [isDeepExtracting, setIsDeepExtracting] = useState(false);
   const [result, setResult] = useState<ExtractionResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -615,7 +614,40 @@ export default function Home() {
       return;
     }
     setResult(extractDetails(emailText));
-    setMessage("Extraction complete. Only explicitly mentioned details are shown.");
+    setMessage("Quick extraction complete. Only explicitly mentioned details are shown.");
+  }
+
+  async function runDeepExtraction() {
+    if (!emailText.trim()) {
+      setMessage("Paste, upload, or drag an email thread before extracting.");
+      return;
+    }
+
+    setIsDeepExtracting(true);
+    setMessage("AI Deep Extract is analyzing explicit details only.");
+
+    try {
+      const cleanedEmail = cleanEmailForAnalysis(emailText);
+      const response = await fetch("/api/deep-extract", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ cleanedEmail })
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || "AI Deep Extract failed.");
+      }
+
+      setResult(payload.result as ExtractionResult);
+      setMessage("AI Deep Extract complete. Every extracted field includes evidence.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "AI Deep Extract failed.");
+    } finally {
+      setIsDeepExtracting(false);
+    }
   }
 
   async function copySummary() {
@@ -696,7 +728,10 @@ export default function Home() {
 
           <div className="actions">
             <button type="button" onClick={runExtraction}>
-              Extract Ops Details
+              Quick Extract
+            </button>
+            <button className="secondaryButton" type="button" onClick={runDeepExtraction} disabled={isDeepExtracting}>
+              {isDeepExtracting ? "AI Extracting..." : "AI Deep Extract"}
             </button>
             <button className="secondaryButton" type="button" onClick={() => setEmailText(sampleEmail)}>
               Sample Email
@@ -730,22 +765,47 @@ export default function Home() {
             </div>
           ) : (
             <div className="results">
-              <SummaryCard title="Shipment Snapshot" items={result.snapshot} />
-              <SummaryCard title="Operational Timeline" items={result.timeline} />
+              <article className="card wide resultMode">
+                <span>{result.source}</span>
+                <p>{result.source === "AI Deep Extract" ? "OpenAI structured JSON extraction with evidence required for every extracted field." : "Local keyword and regex extraction, no API call."}</p>
+              </article>
+
+              <SummaryCard title="Shipment Basics" items={result.basics} />
+              <SummaryCard title="Delivery Method" items={result.delivery} />
+              <SummaryCard title="Flight Details" items={result.flight} />
 
               <article className="card wide">
                 <div className="cardTitle">
-                  <h3>Special Handling Flags</h3>
-                  <span className="count">{result.flags.filter((flag) => flag.status === "Mentioned").length} mentioned</span>
+                  <h3>Critical Cargo Flags</h3>
+                  <span className="count">{result.flags.length} mentioned</span>
                 </div>
-                <div className="flagGrid">
-                  {result.flags.map((flag) => (
-                    <div className="flagItem" key={flag.label}>
-                      <div>
-                        <strong>{flag.label}</strong>
-                        <p>{flag.evidence ? `Line ${flag.evidence.line}: ${flag.evidence.text}` : "No explicit phrase found"}</p>
+                {result.flags.length ? (
+                  <div className="flagGrid">
+                    {result.flags.map((flag) => (
+                      <div className="flagItem" key={flag.label}>
+                        <div>
+                          <strong>{flag.label}</strong>
+                          <p>{flag.evidence && flag.evidence.line > 0 ? `Line ${flag.evidence.line}: ${flag.evidence.text}` : "No explicit phrase found"}</p>
+                        </div>
+                        <span className={`badge ${flag.severity}`}>{flag.status}</span>
                       </div>
-                      <span className={`badge ${flag.severity}`}>{flag.status}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="quietText">No critical cargo flags explicitly mentioned.</p>
+                )}
+              </article>
+
+              <article className="card">
+                <div className="cardTitle">
+                  <h3>Permit Declaration</h3>
+                </div>
+                <div className="dataTable">
+                  {result.permit.map((item) => (
+                    <div className="dataRow" key={item.label}>
+                      <span>{item.label}</span>
+                      <strong className={item.value === notMentioned ? "mutedValue" : ""}>{item.value}</strong>
+                      <small>{item.evidence && item.evidence.line > 0 ? `Line ${item.evidence.line}` : "Not mentioned"}</small>
                     </div>
                   ))}
                 </div>
@@ -753,23 +813,21 @@ export default function Home() {
 
               <article className="card">
                 <div className="cardTitle">
-                  <h3>Missing Information</h3>
-                  <span className="badge missing">{result.missing.length} missing</span>
+                  <h3>Export Ops Notes</h3>
+                  <span className="count">{result.opsNotes.length} found</span>
                 </div>
-                <div className="missingGrid">
-                  {result.missing.length ? result.missing.map((item) => <span key={item}>{item}</span>) : <p>No configured missing items detected.</p>}
-                </div>
-              </article>
-
-              <article className="card">
-                <div className="cardTitle">
-                  <h3>Action Checklist</h3>
-                </div>
-                <ul className="checklist">
-                  {result.checklist.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
+                {result.opsNotes.length ? (
+                  <div className="evidenceList">
+                    {result.opsNotes.map((item) => (
+                      <div key={`${item.line}-${item.text}`} className="evidenceLine">
+                        <span>Line {item.line}</span>
+                        <p>{item.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="quietText">No direct export ops notes found.</p>
+                )}
               </article>
 
               <article className="card wide">
@@ -817,7 +875,7 @@ function SummaryCard({ title, items }: { title: string; items: FieldValue[] }) {
           <div className="dataRow" key={item.label}>
             <span>{item.label}</span>
             <strong className={item.value === notMentioned ? "mutedValue" : ""}>{item.value}</strong>
-            <small>{item.evidence ? `Line ${item.evidence.line}` : "Not mentioned"}</small>
+            <small>{item.evidence && item.evidence.line > 0 ? `Line ${item.evidence.line}` : "Not mentioned"}</small>
           </div>
         ))}
       </div>
