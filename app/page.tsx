@@ -29,6 +29,7 @@ type ExtractionResult = {
   missing: string[];
   checklist: string[];
   evidence: Evidence[];
+  cleanedEmail: string;
 };
 
 const notMentioned = "Not mentioned";
@@ -44,19 +45,19 @@ const snapshotFields = [
   },
   {
     label: "Origin",
-    patterns: [/^\s*(origin|origin airport|from)\s*[:\-]\s*(.+)$/i]
+    patterns: [/^\s*(origin|origin airport)\s*[:\-]\s*(.+)$/i, /\b([A-Z]{3})\s*(?:-|to)\s*([A-Z]{3})\b/i]
   },
   {
     label: "Destination",
-    patterns: [/^\s*(destination|dest|destination airport|to)\s*[:\-]\s*(.+)$/i]
+    patterns: [/^\s*(destination|dest|destination airport)\s*[:\-]\s*(.+)$/i, /\b([A-Z]{3})\s*(?:-|to)\s*([A-Z]{3})\b/i]
   },
   {
     label: "AWB number",
-    patterns: [/\b(?:mawb|awb|air waybill)\s*(?:no\.?|number|#)?\s*[:\-]?\s*([0-9]{3}[-\s]?[0-9]{4}[-\s]?[0-9]{4}|[A-Z0-9-]{6,})\b/i]
+    patterns: [/\b(?:mawb|awb|air waybill)\s*(?:no\.?|number|#)?\s*[:\-]?\s*([0-9]{3}-[0-9]{8})\b/i]
   },
   {
     label: "HAWB number",
-    patterns: [/\b(?:hawb|house awb)\s*(?:no\.?|number|#)?\s*[:\-]?\s*([A-Z0-9-]{4,})\b/i]
+    patterns: [/\b(?:hawb|house awb)\s*(?:no\.?|number|#)?\s*[:#\-]?\s*([A-Z0-9-]{4,})\b/i, /\b(SGMTCT[0-9A-Z]{4,})\b/i]
   },
   {
     label: "Pieces",
@@ -91,11 +92,11 @@ const snapshotFields = [
 const timelineFields = [
   {
     label: "Cargo collection date",
-    patterns: [/\b(?:collection date|pickup date|pick up date|collect on)\s*[:\-]?\s*(.+)$/i]
+    patterns: [/\b(?:collection date|pickup date|pick up date|collect on|cargo ready date|truck date|driver date|warehouse date|delivery date)\s*[:\-]?\s*(.+)$/i]
   },
   {
     label: "Cargo collection time",
-    patterns: [/\b(?:collection time|pickup time|pick up time|collect at)\s*[:\-]?\s*(.+)$/i]
+    patterns: [/\b(?:collection time|pickup time|pick up time|collect at|cargo ready time|truck time|driver time|warehouse time|delivery time)\s*[:\-]?\s*(.+)$/i]
   },
   {
     label: "Collection address",
@@ -184,7 +185,7 @@ Shipper: ABC Precision Pte Ltd
 Consignee: Delta Tools GmbH
 Origin: Singapore
 Destination: FRA
-AWB: 618-1234 5675
+AWB: 618-12345675
 HAWB: HSG456789
 Pieces: 4 wooden crates
 Gross weight: 860 kg
@@ -304,13 +305,81 @@ function failMsgParsing() {
   return "MSG parsing failed. Please paste the email thread or use .eml.";
 }
 
+function isHeaderLine(line: string) {
+  return /^(from|sent|to|cc|bcc|subject|date):\s*/i.test(line);
+}
+
+function isReplyHeader(line: string) {
+  return /^-+\s*original message\s*-+$/i.test(line) || /^on .+wrote:$/i.test(line) || /^from:\s*/i.test(line);
+}
+
+function isFooterStart(line: string) {
+  return /^(best regards|kind regards|regards|thanks|thank you|disclaimer|this email|networks:)\b/i.test(line);
+}
+
+function isFooterNoise(line: string) {
+  return (
+    /^sent from my /i.test(line) ||
+    /^(linkedin|facebook|instagram|youtube|twitter|x\.com)\b/i.test(line) ||
+    /^please consider the environment/i.test(line) ||
+    /^this message and any attachments/i.test(line) ||
+    /^confidentiality notice/i.test(line)
+  );
+}
+
+function cleanEmailForAnalysis(input: string) {
+  const cleanedLines: string[] = [];
+  let skippingFooter = false;
+
+  for (const rawLine of input.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    if (isReplyHeader(line)) {
+      skippingFooter = false;
+      continue;
+    }
+
+    if (skippingFooter) continue;
+    if (isHeaderLine(line) || isFooterNoise(line)) continue;
+
+    if (isFooterStart(line)) {
+      skippingFooter = true;
+      continue;
+    }
+
+    cleanedLines.push(line);
+  }
+
+  return cleanedLines.join("\n");
+}
+
+function valueFromMatch(label: string, match: RegExpMatchArray) {
+  if ((label === "Origin" || label === "Destination") && match[1] && match[2] && /^[A-Z]{3}$/.test(match[1]) && /^[A-Z]{3}$/.test(match[2])) {
+    return label === "Origin" ? match[1] : match[2];
+  }
+
+  return match[2] || match[1] || "";
+}
+
+function hasCollectionContext(line: string) {
+  return /\b(collection|pickup|pick up|collect|truck|driver|cargo ready|delivery|warehouse)\b/i.test(line);
+}
+
 function findField(lines: string[], label: string, patterns: RegExp[]): FieldValue {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+    if ((label === "Cargo collection date" || label === "Cargo collection time") && !hasCollectionContext(line)) {
+      continue;
+    }
+    if ((label === "Cargo collection date" || label === "Cargo collection time") && /\brequired delivery\b/i.test(line)) {
+      continue;
+    }
+
     for (const pattern of patterns) {
       const match = line.match(pattern);
       if (match) {
-        const raw = match[2] || match[1];
+        const raw = valueFromMatch(label, match);
         const value = cleanValue(raw || "");
         if (value) {
           return {
@@ -377,9 +446,8 @@ function uniqueEvidence(items: Array<FieldValue | FlagResult>) {
 }
 
 function extractDetails(input: string): ExtractionResult {
-  const lines = input
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
+  const cleanedEmail = cleanEmailForAnalysis(input);
+  const lines = cleanedEmail
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
@@ -437,7 +505,8 @@ function extractDetails(input: string): ExtractionResult {
     flags: flagResults,
     missing,
     checklist: Array.from(checklist),
-    evidence: uniqueEvidence([...snapshot, ...timeline, ...flagResults])
+    evidence: uniqueEvidence([...snapshot, ...timeline, ...flagResults]),
+    cleanedEmail
   };
 }
 
@@ -452,7 +521,8 @@ function buildSummary(result: ExtractionResult) {
     section("Special Handling Flags", result.flags.map((item) => `${item.label}: ${item.status}${item.evidence ? ` | Line ${item.evidence.line}: ${item.evidence.text}` : ""}`)),
     section("Missing Information", result.missing.length ? result.missing : ["None based on configured checks"]),
     section("Action Checklist", result.checklist),
-    section("Evidence", result.evidence.map((item) => `Line ${item.line}: ${item.text}`))
+    section("Evidence", result.evidence.map((item) => `Line ${item.line}: ${item.text}`)),
+    section("Cleaned Email Preview", result.cleanedEmail ? result.cleanedEmail.split("\n") : ["No analyzable text after cleaning"])
   ].join("\n");
 }
 
@@ -686,6 +756,11 @@ export default function Home() {
                   )}
                 </div>
               </article>
+
+              <details className="card wide cleanedPreview">
+                <summary>Cleaned Email Preview</summary>
+                <pre>{result.cleanedEmail || "No analyzable text after cleaning."}</pre>
+              </details>
             </div>
           )}
         </section>

@@ -503,6 +503,28 @@ textarea:focus {
   overflow-wrap: anywhere;
 }
 
+.cleanedPreview summary {
+  cursor: pointer;
+  color: var(--red);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.cleanedPreview pre {
+  max-height: 320px;
+  margin: 12px 0 0;
+  overflow: auto;
+  border: 1px solid #e4e9ef;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfd;
+  color: #303943;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 1180px) {
   .workspace {
     grid-template-columns: 1fr;
