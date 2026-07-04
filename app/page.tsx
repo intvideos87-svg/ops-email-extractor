@@ -2,6 +2,7 @@
 
 import { ChangeEvent, DragEvent, useMemo, useRef, useState } from "react";
 import MsgReader from "msgreader";
+import MsgReaderConst from "msgreader/lib/const";
 
 type Evidence = {
   line: number;
@@ -264,45 +265,78 @@ function cleanMsgField(value: string | undefined) {
   return cleanValue(value.replace(/\r\n/g, "\n").replace(/\r/g, "\n"));
 }
 
+function decodeHtmlEntities(value: string) {
+  if (typeof document === "undefined") return value;
+  const textarea = document.createElement("textarea");
+  textarea.innerHTML = value;
+  return textarea.value;
+}
+
+function htmlToVisibleText(html: string) {
+  if (hasUnreadableContent(html)) {
+    throw new Error("Unreadable MSG HTML content");
+  }
+
+  const withoutHiddenBlocks = html
+    .replace(/<head[\s\S]*?<\/head>/gi, "\n")
+    .replace(/<style[\s\S]*?<\/style>/gi, "\n")
+    .replace(/<script[\s\S]*?<\/script>/gi, "\n")
+    .replace(/<meta[\s\S]*?>/gi, "\n")
+    .replace(/<xml[\s\S]*?<\/xml>/gi, "\n");
+
+  return decodeHtmlEntities(
+    withoutHiddenBlocks
+      .replace(/<(br|\/p|\/div|\/li|\/tr|\/h[1-6])\b[^>]*>/gi, "\n")
+      .replace(/<li\b[^>]*>/gi, "\n- ")
+      .replace(/<[^>]+>/g, " ")
+  );
+}
+
+function normalizeVisibleMsgBody(value: string | undefined) {
+  if (!value) return "";
+  if (hasUnreadableContent(value)) {
+    throw new Error("Unreadable MSG body content");
+  }
+
+  const normalized = value
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\u00A0/g, " ")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  const readableCharacters = normalized.replace(/\s/g, "").length;
+  if (readableCharacters < 10) {
+    throw new Error("MSG body is too short to trust");
+  }
+
+  return normalized;
+}
+
 function parseMsgFile(buffer: ArrayBuffer) {
+  MsgReaderConst.MSG.FIELD.NAME_MAPPING["1013"] = "htmlBody";
   const reader = new MsgReader(buffer);
   const data = reader.getFileData() as {
     error?: string;
-    subject?: string;
-    senderName?: string;
-    senderEmail?: string;
-    headers?: string;
     body?: string;
+    htmlBody?: string;
   };
 
   if (data.error) {
     throw new Error(data.error);
   }
 
-  const subject = cleanMsgField(data.subject);
-  const senderName = cleanMsgField(data.senderName);
-  const senderEmail = cleanMsgField(data.senderEmail);
-  const headerSender = cleanMsgField(parseHeaderValue(data.headers, "From"));
-  const sentDate = cleanMsgField(parseHeaderValue(data.headers, "Date"));
-  const body = cleanMsgField(data.body);
-  const sender = [senderName, senderEmail].filter(Boolean).join(" ").trim() || headerSender;
+  const preferredBody = data.htmlBody ? htmlToVisibleText(data.htmlBody) : data.body;
+  const body = normalizeVisibleMsgBody(preferredBody);
 
-  if (!subject && !sender && !sentDate && !body) {
-    throw new Error("No readable MSG fields found");
-  }
-
-  return [
-    `Subject: ${subject || notMentioned}`,
-    `Sender: ${sender || notMentioned}`,
-    `Sent date: ${sentDate || notMentioned}`,
-    "",
-    "Plain text body:",
-    body || notMentioned
-  ].join("\n");
+  return body;
 }
 
 function failMsgParsing() {
-  return "MSG parsing failed. Please paste the email thread or use .eml.";
+  return "Outlook MSG drag/drop is not clean enough. Please open the email, press Ctrl+A, copy, and paste into the app.";
 }
 
 function isHeaderLine(line: string) {
