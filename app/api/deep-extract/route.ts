@@ -1,122 +1,144 @@
 import { NextResponse } from "next/server";
 
-const basicsLabels = ["AWB / HAWB", "Origin", "Destination", "Pieces", "Weight", "Commodity"];
-const deliveryLabels = ["Delivery type", "Collection / Delivery date", "Collection / Delivery time"];
-const flightLabels = ["Flight date", "Flight number", "Cut-off"];
-const flagLabels = ["Battery / Lithium", "DG / DGR", "Fumigation", "Perishable", "Temperature control", "Non-stackable", "Pivot weight"];
-const permitLabels = ["Permit status", "Declaration responsibility", "Type of permit"];
-
-const evidenceSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["line", "text"],
-  properties: {
-    line: { type: "number" },
-    text: { type: "string" }
-  }
+const nullableString = {
+  type: ["string", "null"]
 };
 
-const fieldSchema = (labels: string[]) => ({
-  type: "array",
-  items: {
-    type: "object",
-    additionalProperties: false,
-    required: ["label", "value", "evidence"],
-    properties: {
-      label: { type: "string", enum: labels },
-      value: { type: "string" },
-      evidence: evidenceSchema
-    }
+const flagFieldSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["status", "evidence"],
+  properties: {
+    status: { type: "string", enum: ["Mentioned", "Not mentioned"] },
+    evidence: nullableString
   }
-});
+};
 
 const extractionSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["source", "basics", "delivery", "flight", "flags", "permit", "opsNotes", "evidence", "cleanedEmail"],
+  required: ["shipment_basics", "delivery_method", "flight_details", "critical_flags", "permit_declaration", "export_ops_notes"],
   properties: {
-    source: { type: "string", enum: ["AI Deep Extract"] },
-    basics: fieldSchema(basicsLabels),
-    delivery: fieldSchema(deliveryLabels),
-    flight: fieldSchema(flightLabels),
-    flags: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["label", "status", "phrase", "evidence", "severity"],
-        properties: {
-          label: { type: "string", enum: flagLabels },
-          status: { type: "string", enum: ["Mentioned"] },
-          phrase: { type: "string" },
-          evidence: evidenceSchema,
-          severity: { type: "string", enum: ["critical", "attention"] }
-        }
+    shipment_basics: {
+      type: "object",
+      additionalProperties: false,
+      required: ["awb", "hawb", "origin", "destination", "pieces", "weight", "commodity"],
+      properties: {
+        awb: nullableString,
+        hawb: nullableString,
+        origin: nullableString,
+        destination: nullableString,
+        pieces: nullableString,
+        weight: nullableString,
+        commodity: nullableString
       }
     },
-    permit: fieldSchema(permitLabels),
-    opsNotes: {
-      type: "array",
-      items: evidenceSchema
+    delivery_method: {
+      type: "object",
+      additionalProperties: false,
+      required: ["type", "date", "time"],
+      properties: {
+        type: nullableString,
+        date: nullableString,
+        time: nullableString
+      }
     },
-    evidence: {
-      type: "array",
-      items: evidenceSchema
+    flight_details: {
+      type: "object",
+      additionalProperties: false,
+      required: ["flight_number", "flight_date", "cutoff"],
+      properties: {
+        flight_number: nullableString,
+        flight_date: nullableString,
+        cutoff: nullableString
+      }
     },
-    cleanedEmail: { type: "string" }
+    critical_flags: {
+      type: "object",
+      additionalProperties: false,
+      required: ["batteries_lithium", "dg_dgr", "msds_dgd", "fumigation_ispm15", "perishable", "temperature_control", "non_stackable", "pivot_weight"],
+      properties: {
+        batteries_lithium: flagFieldSchema,
+        dg_dgr: flagFieldSchema,
+        msds_dgd: flagFieldSchema,
+        fumigation_ispm15: flagFieldSchema,
+        perishable: flagFieldSchema,
+        temperature_control: flagFieldSchema,
+        non_stackable: flagFieldSchema,
+        pivot_weight: flagFieldSchema
+      }
+    },
+    permit_declaration: {
+      type: "object",
+      additionalProperties: false,
+      required: ["mentioned", "responsibility"],
+      properties: {
+        mentioned: { type: "boolean" },
+        responsibility: nullableString
+      }
+    },
+    export_ops_notes: {
+      type: "array",
+      items: { type: "string" }
+    }
   }
 };
 
-function lineNumberEmail(text: string) {
-  return text
-    .split("\n")
-    .map((line, index) => `${index + 1}: ${line}`)
-    .join("\n");
+function normalizeString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function safeEvidence(value: unknown) {
-  const evidence = value as { line?: unknown; text?: unknown };
+function normalizeFlag(value: any) {
+  const mentioned = value?.status === "Mentioned";
   return {
-    line: typeof evidence?.line === "number" ? evidence.line : 0,
-    text: typeof evidence?.text === "string" ? evidence.text : ""
+    status: mentioned ? "Mentioned" : "Not mentioned",
+    evidence: mentioned ? normalizeString(value?.evidence) : null
   };
 }
 
-function normalizeFields(items: unknown, requiredLabels: string[]) {
-  const rows = Array.isArray(items) ? items : [];
-  return requiredLabels.map((label) => {
-    const match = rows.find((item: any) => item?.label === label);
-    return {
-      label,
-      value: typeof match?.value === "string" ? match.value : "Not mentioned",
-      evidence: safeEvidence(match?.evidence)
-    };
-  });
+function normalizeFlightNumber(value: unknown) {
+  const normalized = normalizeString(value);
+  if (!normalized) return null;
+  const match = normalized.match(/\b([A-Z0-9]{2,3})\s*([0-9]{2,4}[A-Z]?)\b/i);
+  return match ? `${match[1].toUpperCase()}${match[2]}` : normalized;
 }
 
-function normalizeAiResult(result: any, cleanedEmail: string) {
-  const flags = Array.isArray(result.flags)
-    ? result.flags
-        .filter((item: any) => item?.status === "Mentioned")
-        .map((item: any) => ({ ...item, evidence: safeEvidence(item.evidence), severity: item.severity === "attention" ? "attention" : "critical" }))
-    : [];
-  const opsNotes = Array.isArray(result.opsNotes)
-    ? result.opsNotes.map(safeEvidence).filter((item: { line: number; text: string }) => item.line > 0 && item.text)
-    : [];
-  const evidence = Array.isArray(result.evidence)
-    ? result.evidence.map(safeEvidence).filter((item: { line: number; text: string }) => item.line > 0 && item.text)
-    : [];
-
+function normalizeResult(result: any) {
   return {
-    source: "AI Deep Extract" as const,
-    basics: normalizeFields(result.basics, basicsLabels),
-    delivery: normalizeFields(result.delivery, deliveryLabels),
-    flight: normalizeFields(result.flight, flightLabels),
-    flags,
-    permit: normalizeFields(result.permit, permitLabels),
-    opsNotes,
-    evidence,
-    cleanedEmail
+    shipment_basics: {
+      awb: normalizeString(result?.shipment_basics?.awb),
+      hawb: normalizeString(result?.shipment_basics?.hawb),
+      origin: normalizeString(result?.shipment_basics?.origin),
+      destination: normalizeString(result?.shipment_basics?.destination),
+      pieces: normalizeString(result?.shipment_basics?.pieces),
+      weight: normalizeString(result?.shipment_basics?.weight),
+      commodity: normalizeString(result?.shipment_basics?.commodity)
+    },
+    delivery_method: {
+      type: normalizeString(result?.delivery_method?.type),
+      date: normalizeString(result?.delivery_method?.date),
+      time: normalizeString(result?.delivery_method?.time)
+    },
+    flight_details: {
+      flight_number: normalizeFlightNumber(result?.flight_details?.flight_number),
+      flight_date: normalizeString(result?.flight_details?.flight_date),
+      cutoff: normalizeString(result?.flight_details?.cutoff)
+    },
+    critical_flags: {
+      batteries_lithium: normalizeFlag(result?.critical_flags?.batteries_lithium),
+      dg_dgr: normalizeFlag(result?.critical_flags?.dg_dgr),
+      msds_dgd: normalizeFlag(result?.critical_flags?.msds_dgd),
+      fumigation_ispm15: normalizeFlag(result?.critical_flags?.fumigation_ispm15),
+      perishable: normalizeFlag(result?.critical_flags?.perishable),
+      temperature_control: normalizeFlag(result?.critical_flags?.temperature_control),
+      non_stackable: normalizeFlag(result?.critical_flags?.non_stackable),
+      pivot_weight: normalizeFlag(result?.critical_flags?.pivot_weight)
+    },
+    permit_declaration: {
+      mentioned: result?.permit_declaration?.mentioned === true,
+      responsibility: normalizeString(result?.permit_declaration?.responsibility)
+    },
+    export_ops_notes: Array.isArray(result?.export_ops_notes) ? result.export_ops_notes.filter((note: unknown) => typeof note === "string" && note.trim()).map((note: string) => note.trim()) : []
   };
 }
 
@@ -133,8 +155,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No cleaned email text provided." }, { status: 400 });
   }
 
-  const numberedEmail = lineNumberEmail(cleanedEmail);
-
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -142,22 +162,22 @@ export async function POST(request: Request) {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+      model: "gpt-4.1-mini",
       input: [
         {
           role: "system",
           content:
-            "You are an export airfreight operations extraction engine. Return structured JSON only. Do not guess. Do not infer. Extract only operationally relevant export ops information explicitly mentioned in the email. Every extracted value must include exact evidence line number and exact evidence text. Use 'Not mentioned' with line 0 and empty text when absent. Keep output concise."
+            "You are an export airfreight operations extraction engine. Return strict JSON only. Never guess. Never infer. Only extract explicit operational instructions from the cleaned email body. If a value is not explicitly found, return null. For critical flags, always return every flag with status 'Mentioned' or 'Not mentioned'."
         },
         {
           role: "user",
-          content: `Extract only the requested export ops action-board fields from this cleaned email.\n\nStrict rules:\n- Do not extract shipper, consignee, address, contact person, contact number, urgent, oversized/OOG, or permit as a cargo flag.\n- Shipment Basics only: AWB / HAWB, Origin, Destination, Pieces, Weight, Commodity.\n- Delivery Method only: Delivery type, Collection / Delivery date, Collection / Delivery time.\n- Delivery type must be Collection or Self-delivery only when explicit phrases appear: collect, pickup, truck in, arrange collection, self-deliver, send to warehouse, deliver cargo.\n- Flight Details only: Flight date, Flight number, Cut-off. Do not use email timestamps as flight date.\n- Critical Cargo Flags: return only explicitly mentioned flags from Battery / Lithium, DG / DGR, Fumigation, Perishable, Temperature control, Non-stackable, Pivot weight. Omit flags that are not mentioned.\n- Permit Declaration: detect Permit required, Permit self-declared by shipper, Permit to be declared by us / export ops, Type of permit. If permit is mentioned but responsibility is unclear, set Declaration responsibility to "Permit mentioned - declaration responsibility unclear".\n- Export Ops Notes: return exact lines aimed at ops, including export ops pls take note, ops please note, pls take note, team please note, warehouse please note, important:, note:.\n- Evidence array should include every line used for extracted values and ops notes.\n\nNumbered cleaned email:\n${numberedEmail}`
+          content: `Extract this exact JSON structure from the cleaned email body.\n\nRules:\n- Never guess.\n- Never infer.\n- Only extract explicit information.\n- If not found, return null.\n- Do not use email sent timestamp as flight date.\n- Ignore signatures and disclaimers.\n- Focus only on operational instructions.\n- Delivery type must only be Collection or Self-delivery if explicitly stated by operational phrases such as collect, pickup, truck in, arrange collection, self-deliver, send to warehouse, deliver cargo. Otherwise null.\n- export_ops_notes must contain exact direct instruction lines meant for export ops only.\n- Critical flags must always include all fields. Status must be "Mentioned" or "Not mentioned". If Mentioned, evidence must be the exact source line. If Not mentioned, evidence must be null.\n- Critical flags are: Batteries / Lithium, DG / DGR, MSDS / DGD, Fumigation / ISPM15, Perishable, Temperature control, Non-stackable, Pivot weight.\n- Flight number must capture the full airline code plus numeric portion. Never return airline code alone if a number exists.\n- Normalize flight number by removing spaces between airline code and number: SQ 0510 -> SQ0510, EK 354 -> EK354, QR 942 -> QR942.\n- Prioritize operational flight lines such as FLIGHT NO., Flight:, Scheduled Departure, and uplift point / discharge point tables.\n- If multiple flights exist, use the latest confirmed/latest operational flight.\n- Do not summarize or truncate flight numbers. SQ is not SQ0510.\n\nCleaned email body:\n${cleanedEmail}`
         }
       ],
       text: {
         format: {
           type: "json_schema",
-          name: "ops_action_board_extraction",
+          name: "ops_email_ai_extraction",
           strict: true,
           schema: extractionSchema
         }
@@ -178,7 +198,5 @@ export async function POST(request: Request) {
   }
 
   const parsed = JSON.parse(outputText);
-  const result = normalizeAiResult(parsed, cleanedEmail);
-
-  return NextResponse.json({ result });
+  return NextResponse.json({ result: normalizeResult(parsed) });
 }
