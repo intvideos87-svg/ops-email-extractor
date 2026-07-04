@@ -251,6 +251,18 @@ function parseHeaderValue(headers: string | undefined, headerName: string) {
   return match ? cleanValue(match[1].replace(/\n[\t ]+/g, " ")) : "";
 }
 
+function hasUnreadableContent(value: string) {
+  return /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\uFFFD]/.test(value);
+}
+
+function cleanMsgField(value: string | undefined) {
+  if (!value) return "";
+  if (hasUnreadableContent(value)) {
+    throw new Error("Unreadable MSG content");
+  }
+  return cleanValue(value.replace(/\r\n/g, "\n").replace(/\r/g, "\n"));
+}
+
 function parseMsgFile(buffer: ArrayBuffer) {
   const reader = new MsgReader(buffer);
   const data = reader.getFileData() as {
@@ -266,12 +278,12 @@ function parseMsgFile(buffer: ArrayBuffer) {
     throw new Error(data.error);
   }
 
-  const subject = cleanValue(data.subject || "");
-  const senderName = cleanValue(data.senderName || "");
-  const senderEmail = cleanValue(data.senderEmail || "");
-  const headerSender = parseHeaderValue(data.headers, "From");
-  const sentDate = parseHeaderValue(data.headers, "Date");
-  const body = cleanValue(data.body || "");
+  const subject = cleanMsgField(data.subject);
+  const senderName = cleanMsgField(data.senderName);
+  const senderEmail = cleanMsgField(data.senderEmail);
+  const headerSender = cleanMsgField(parseHeaderValue(data.headers, "From"));
+  const sentDate = cleanMsgField(parseHeaderValue(data.headers, "Date"));
+  const body = cleanMsgField(data.body);
   const sender = [senderName, senderEmail].filter(Boolean).join(" ").trim() || headerSender;
 
   if (!subject && !sender && !sentDate && !body) {
@@ -286,6 +298,10 @@ function parseMsgFile(buffer: ArrayBuffer) {
     "Plain text body:",
     body || notMentioned
   ].join("\n");
+}
+
+function failMsgParsing() {
+  return "MSG parsing failed. Please paste the email thread or use .eml.";
 }
 
 function findField(lines: string[], label: string, patterns: RegExp[]): FieldValue {
@@ -470,7 +486,7 @@ export default function Home() {
     } catch {
       if (extension === "msg") {
         setEmailText("");
-        setMessage("MSG parsing failed. Please drag in .eml or paste the email thread.");
+        setMessage(failMsgParsing());
       } else {
         setMessage("The file could not be read. Please paste the email thread instead.");
       }
