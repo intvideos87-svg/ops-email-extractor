@@ -18,6 +18,8 @@ type DeliveryMethod = {
   type: string | null;
   date: string | null;
   time: string | null;
+  evidence: string | null;
+  date_basis: string | null;
 };
 
 type FlightDetails = {
@@ -35,16 +37,21 @@ type CriticalFlags = {
   temperature_control: FlagField;
   non_stackable: FlagField;
   pivot_weight: FlagField;
+  magnetized: FlagField;
 };
 
 type FlagField = {
   status: "Mentioned" | "Not mentioned";
   evidence: string | null;
+  keyword: string | null;
+  email_context: string | null;
+  line_number: number | null;
 };
 
 type PermitDeclaration = {
   mentioned: boolean;
   responsibility: string | null;
+  evidence: string | null;
 };
 
 type AiExtractionResult = {
@@ -105,8 +112,16 @@ function decodeQuotedPrintable(value: string) {
 function parseEml(text: string) {
   const normalized = text.replace(/\r\n/g, "\n");
   const headerEnd = normalized.indexOf("\n\n");
+  const headerText = headerEnd >= 0 ? normalized.slice(0, headerEnd) : "";
   const bodyText = headerEnd >= 0 ? normalized.slice(headerEnd + 2) : normalized;
-  return decodeQuotedPrintable(bodyText).trim();
+  const headers = ["Subject", "From", "To", "Date"]
+    .map((header) => {
+      const match = headerText.match(new RegExp(`^${header}:\\s*(.+)$`, "im"));
+      return match ? `${header}: ${cleanValue(match[1])}` : "";
+    })
+    .filter(Boolean);
+
+  return [...headers, "", decodeQuotedPrintable(bodyText)].join("\n").trim();
 }
 
 function hasUnreadableContent(value: string) {
@@ -232,6 +247,20 @@ function cleanEmailForAnalysis(input: string) {
   return cleanedLines.join("\n");
 }
 
+function extractEmailSentDateBasis(input: string) {
+  const lines = input.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    const match = line.match(/^(sent|date):\s*(.+)$/i);
+    if (match) {
+      return cleanValue(match[2]);
+    }
+  }
+
+  return null;
+}
+
 function displayValue(value: string | null | boolean) {
   if (typeof value === "boolean") return value ? "Yes" : "No";
   return value && cleanValue(value) ? value : emptyValue;
@@ -254,6 +283,8 @@ function buildSummary(result: AiExtractionResult, cleanedEmail: string) {
     `- Type: ${displayValue(result.delivery_method.type)}`,
     `- Date: ${displayValue(result.delivery_method.date)}`,
     `- Time: ${displayValue(result.delivery_method.time)}`,
+    `- Evidence: ${displayValue(result.delivery_method.evidence)}`,
+    `- Date basis: ${displayValue(result.delivery_method.date_basis)}`,
     "",
     "Flight Details",
     `- Flight number: ${displayValue(result.flight_details.flight_number)}`,
@@ -283,6 +314,8 @@ export default function Home() {
   const [isExtracting, setIsExtracting] = useState(false);
   const [result, setResult] = useState<AiExtractionResult | null>(null);
   const [cleanedEmail, setCleanedEmail] = useState("");
+  const [sentDateBasis, setSentDateBasis] = useState<string | null>(null);
+  const [selectedFlag, setSelectedFlag] = useState<{ label: string; value: FlagField } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const summaryText = useMemo(() => (result ? buildSummary(result, cleanedEmail) : ""), [result, cleanedEmail]);
@@ -292,6 +325,8 @@ export default function Home() {
     setFileName(file.name);
     setResult(null);
     setCleanedEmail("");
+    setSentDateBasis(null);
+    setSelectedFlag(null);
     const extension = file.name.split(".").pop()?.toLowerCase();
 
     try {
@@ -343,6 +378,7 @@ export default function Home() {
     setMessage("Extracting ops details with AI.");
     setResult(null);
     setCleanedEmail(cleaned);
+    setSentDateBasis(extractEmailSentDateBasis(emailText));
 
     try {
       const response = await fetch("/api/deep-extract", {
@@ -350,7 +386,7 @@ export default function Home() {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ cleanedEmail: cleaned })
+        body: JSON.stringify({ cleanedEmail: cleaned, emailSentDate: extractEmailSentDateBasis(emailText) })
       });
 
       const payload = await response.json();
@@ -390,6 +426,7 @@ export default function Home() {
     setMessage("");
     setResult(null);
     setCleanedEmail("");
+    setSentDateBasis(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -483,7 +520,7 @@ export default function Home() {
               <ObjectCard title="Shipment Basics" rows={result.shipment_basics} />
               <ObjectCard title="Delivery Method" rows={result.delivery_method} />
               <ObjectCard title="Flight Details" rows={result.flight_details} />
-              <FlagsCard flags={result.critical_flags} />
+              <FlagsCard flags={result.critical_flags} onSelect={setSelectedFlag} />
 
               <article className="card">
                 <div className="cardTitle">
@@ -498,6 +535,11 @@ export default function Home() {
                   <div className="dataRow">
                     <span>Responsibility</span>
                     <strong className={!result.permit_declaration.responsibility ? "mutedValue" : ""}>{displayValue(result.permit_declaration.responsibility)}</strong>
+                    <small>AI</small>
+                  </div>
+                  <div className="dataRow">
+                    <span>Evidence</span>
+                    <strong className={!result.permit_declaration.evidence ? "mutedValue" : ""}>{displayValue(result.permit_declaration.evidence)}</strong>
                     <small>AI</small>
                   </div>
                 </div>
@@ -521,12 +563,46 @@ export default function Home() {
 
               <details className="card wide cleanedPreview">
                 <summary>Cleaned Email Preview</summary>
-                <pre>{cleanedEmail || "No analyzable text after cleaning."}</pre>
+                <pre>{`${sentDateBasis ? `Email sent date basis: ${sentDateBasis}\n\n` : ""}${cleanedEmail || "No analyzable text after cleaning."}`}</pre>
               </details>
             </div>
           )}
         </section>
       </section>
+
+      {selectedFlag && (
+        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label={`${selectedFlag.label} evidence`}>
+          <div className="modalCard">
+            <div className="modalHeader">
+              <div>
+                <span className="eyebrow">Critical flag evidence</span>
+                <h3>{selectedFlag.label}</h3>
+              </div>
+              <button className="ghostButton modalClose" type="button" onClick={() => setSelectedFlag(null)}>
+                Close
+              </button>
+            </div>
+            <div className="modalEvidence">
+              <div>
+                <span>Status</span>
+                <strong>{selectedFlag.value.status}</strong>
+              </div>
+              <div>
+                <span>Email in thread</span>
+                <strong>{selectedFlag.value.email_context || "Current/latest email"}</strong>
+              </div>
+              <div>
+                <span>Line number</span>
+                <strong>{selectedFlag.value.line_number ? `Line ${selectedFlag.value.line_number}` : "Not available"}</strong>
+              </div>
+              <div className="modalSentence">
+                <span>Evidence</span>
+                <p>{highlightKeyword(selectedFlag.value.evidence || "No evidence available.", selectedFlag.value.keyword)}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -554,7 +630,7 @@ function ObjectCard({ title, rows }: { title: string; rows: Record<string, strin
   );
 }
 
-function FlagsCard({ flags }: { flags: CriticalFlags }) {
+function FlagsCard({ flags, onSelect }: { flags: CriticalFlags; onSelect: (flag: { label: string; value: FlagField }) => void }) {
   const entries = Object.entries(flags);
   const active = entries.filter(([, value]) => value.status === "Mentioned").length;
 
@@ -566,13 +642,21 @@ function FlagsCard({ flags }: { flags: CriticalFlags }) {
       </div>
       <div className="flagGrid">
         {entries.map(([key, value]) => (
-          <div className="flagItem" key={key}>
+          <button
+            className={`flagItem flagButton ${value.status === "Mentioned" ? "isClickable" : ""}`}
+            key={key}
+            type="button"
+            onClick={() => {
+              if (value.status === "Mentioned") onSelect({ label: flagLabel(key), value });
+            }}
+            disabled={value.status !== "Mentioned"}
+          >
             <div>
               <strong>{flagLabel(key)}</strong>
-              <p>{value.status === "Mentioned" ? value.evidence || "Mentioned" : "Not mentioned"}</p>
+              <p>{value.status === "Mentioned" ? "Click to verify evidence" : "Not mentioned"}</p>
             </div>
             <span className={`badge ${value.status === "Mentioned" ? "critical" : "clear"}`}>{value.status}</span>
-          </div>
+          </button>
         ))}
       </div>
     </article>
@@ -588,8 +672,26 @@ function flagLabel(key: string) {
     perishable: "Perishable",
     temperature_control: "Temperature control",
     non_stackable: "Non-stackable",
-    pivot_weight: "Pivot weight"
+    pivot_weight: "Pivot weight",
+    magnetized: "Magnetized"
   };
 
   return labels[key] || key.replaceAll("_", " ");
+}
+
+function highlightKeyword(sentence: string, keyword: string | null) {
+  if (!keyword) return sentence;
+  const lowerSentence = sentence.toLowerCase();
+  const lowerKeyword = keyword.toLowerCase();
+  const index = lowerSentence.indexOf(lowerKeyword);
+
+  if (index < 0) return sentence;
+
+  return (
+    <>
+      {sentence.slice(0, index)}
+      <mark>{sentence.slice(index, index + keyword.length)}</mark>
+      {sentence.slice(index + keyword.length)}
+    </>
+  );
 }

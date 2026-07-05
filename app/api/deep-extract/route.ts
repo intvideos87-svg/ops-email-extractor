@@ -7,16 +7,19 @@ const nullableString = {
 const flagFieldSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["status", "evidence"],
+  required: ["status", "evidence", "keyword", "email_context", "line_number"],
   properties: {
     status: { type: "string", enum: ["Mentioned", "Not mentioned"] },
-    evidence: nullableString
+    evidence: nullableString,
+    keyword: nullableString,
+    email_context: nullableString,
+    line_number: { type: ["number", "null"] }
   }
 };
 
 const responsibilitySchema = {
   type: ["string", "null"],
-  enum: ["Shipper", "Export Ops / Our Side", "Unclear", null]
+  enum: ["Shipper", "UAF / Forwarder", "Pending / To follow", "Unclear", null]
 };
 
 const extractionSchema = {
@@ -41,11 +44,13 @@ const extractionSchema = {
     delivery_method: {
       type: "object",
       additionalProperties: false,
-      required: ["type", "date", "time"],
+      required: ["type", "date", "time", "evidence", "date_basis"],
       properties: {
         type: nullableString,
         date: nullableString,
-        time: nullableString
+        time: nullableString,
+        evidence: nullableString,
+        date_basis: nullableString
       }
     },
     flight_details: {
@@ -61,7 +66,7 @@ const extractionSchema = {
     critical_flags: {
       type: "object",
       additionalProperties: false,
-      required: ["batteries_lithium", "dg_dgr", "msds_dgd", "fumigation_ispm15", "perishable", "temperature_control", "non_stackable", "pivot_weight"],
+      required: ["batteries_lithium", "dg_dgr", "msds_dgd", "fumigation_ispm15", "perishable", "temperature_control", "non_stackable", "pivot_weight", "magnetized"],
       properties: {
         batteries_lithium: flagFieldSchema,
         dg_dgr: flagFieldSchema,
@@ -70,16 +75,18 @@ const extractionSchema = {
         perishable: flagFieldSchema,
         temperature_control: flagFieldSchema,
         non_stackable: flagFieldSchema,
-        pivot_weight: flagFieldSchema
+        pivot_weight: flagFieldSchema,
+        magnetized: flagFieldSchema
       }
     },
     permit_declaration: {
       type: "object",
       additionalProperties: false,
-      required: ["mentioned", "responsibility"],
+      required: ["mentioned", "responsibility", "evidence"],
       properties: {
         mentioned: { type: "boolean" },
-        responsibility: responsibilitySchema
+        responsibility: responsibilitySchema,
+        evidence: nullableString
       }
     },
     export_ops_notes: {
@@ -97,7 +104,10 @@ function normalizeFlag(value: any) {
   const mentioned = value?.status === "Mentioned";
   return {
     status: mentioned ? "Mentioned" : "Not mentioned",
-    evidence: mentioned ? normalizeString(value?.evidence) : null
+    evidence: mentioned ? normalizeString(value?.evidence) : null,
+    keyword: mentioned ? normalizeString(value?.keyword) : null,
+    email_context: mentioned ? normalizeString(value?.email_context) || "Current/latest email" : null,
+    line_number: mentioned && typeof value?.line_number === "number" ? value.line_number : null
   };
 }
 
@@ -108,10 +118,44 @@ function normalizeFlightNumber(value: unknown) {
   return match ? `${match[1].toUpperCase()}${match[2]}` : normalized;
 }
 
+function normalizePieces(value: unknown) {
+  const normalized = normalizeString(value);
+  if (!normalized) return null;
+
+  const unitMap: Record<string, string> = {
+    pallet: "PLT",
+    pallets: "PLT",
+    plt: "PLT",
+    plts: "PLT",
+    ctn: "CTN",
+    ctns: "CTNS",
+    carton: "CTN",
+    cartons: "CTNS",
+    crate: "CRATE",
+    crates: "CRATES",
+    skid: "SKID",
+    skids: "SKIDS"
+  };
+
+  const tableMatch = normalized.match(/\bqty\s*(\d+)\s*type\s*(PLTS?|pallets?|ctns?|cartons?|crates?|skids?)\b/i);
+  const match = tableMatch || normalized.match(/\b(\d+)\s*(PLTS?|pallets?|ctns?|cartons?|crates?|skids?)\b/i);
+  if (!match) return normalized;
+
+  const unit = unitMap[match[2].toLowerCase()] || match[2].toUpperCase();
+  return `${match[1]} ${unit}`;
+}
+
 function normalizeResponsibility(value: unknown, permitMentioned: boolean) {
   if (!permitMentioned) return null;
-  if (value === "Shipper" || value === "Export Ops / Our Side" || value === "Unclear") return value;
+  if (value === "Shipper" || value === "UAF / Forwarder" || value === "Pending / To follow" || value === "Unclear") return value;
   return "Unclear";
+}
+
+function lineNumberEmail(text: string) {
+  return text
+    .split("\n")
+    .map((line, index) => `${index + 1}: ${line}`)
+    .join("\n");
 }
 
 function normalizeResult(result: any) {
@@ -123,14 +167,16 @@ function normalizeResult(result: any) {
       hawb: normalizeString(result?.shipment_basics?.hawb),
       origin: normalizeString(result?.shipment_basics?.origin),
       destination: normalizeString(result?.shipment_basics?.destination),
-      pieces: normalizeString(result?.shipment_basics?.pieces),
+      pieces: normalizePieces(result?.shipment_basics?.pieces),
       weight: normalizeString(result?.shipment_basics?.weight),
       commodity: normalizeString(result?.shipment_basics?.commodity)
     },
     delivery_method: {
       type: normalizeString(result?.delivery_method?.type),
       date: normalizeString(result?.delivery_method?.date),
-      time: normalizeString(result?.delivery_method?.time)
+      time: normalizeString(result?.delivery_method?.time),
+      evidence: normalizeString(result?.delivery_method?.evidence),
+      date_basis: normalizeString(result?.delivery_method?.date_basis)
     },
     flight_details: {
       flight_number: normalizeFlightNumber(result?.flight_details?.flight_number),
@@ -145,11 +191,13 @@ function normalizeResult(result: any) {
       perishable: normalizeFlag(result?.critical_flags?.perishable),
       temperature_control: normalizeFlag(result?.critical_flags?.temperature_control),
       non_stackable: normalizeFlag(result?.critical_flags?.non_stackable),
-      pivot_weight: normalizeFlag(result?.critical_flags?.pivot_weight)
+      pivot_weight: normalizeFlag(result?.critical_flags?.pivot_weight),
+      magnetized: normalizeFlag(result?.critical_flags?.magnetized)
     },
     permit_declaration: {
       mentioned: permitMentioned,
-      responsibility: normalizeResponsibility(result?.permit_declaration?.responsibility, permitMentioned)
+      responsibility: normalizeResponsibility(result?.permit_declaration?.responsibility, permitMentioned),
+      evidence: permitMentioned ? normalizeString(result?.permit_declaration?.evidence) : null
     },
     export_ops_notes: Array.isArray(result?.export_ops_notes) ? result.export_ops_notes.filter((note: unknown) => typeof note === "string" && note.trim()).map((note: string) => note.trim()) : []
   };
@@ -163,10 +211,13 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => null);
   const cleanedEmail = typeof body?.cleanedEmail === "string" ? body.cleanedEmail.trim() : "";
+  const emailSentDate = typeof body?.emailSentDate === "string" ? body.emailSentDate.trim() : "";
 
   if (!cleanedEmail) {
     return NextResponse.json({ error: "No cleaned email text provided." }, { status: 400 });
   }
+
+  const numberedEmail = lineNumberEmail(cleanedEmail);
 
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -184,7 +235,7 @@ export async function POST(request: Request) {
         },
         {
           role: "user",
-          content: `Extract this exact JSON structure from the cleaned email body.\n\nGeneral rules:\n- Never guess.\n- Never infer.\n- Only extract explicit information.\n- If not found, return null.\n- Do not use email sent timestamp as flight date.\n- Ignore signatures and disclaimers.\n- Focus only on operational instructions.\n- Delivery type must only be Collection or Self-delivery if explicitly stated by operational phrases such as collect, pickup, truck in, arrange collection, self-deliver, send to warehouse, deliver cargo. Otherwise null.\n- export_ops_notes must contain exact direct instruction lines meant for export ops only.\n\nCritical flag intent rules:\n- Always include all critical flag fields.\n- Status must be "Mentioned" only if the email indicates the cargo ACTUALLY contains it, is declared as it, has the document attached, or requires that handling.\n- If Mentioned, evidence must be the exact source line.\n- If Not mentioned, evidence must be null.\n- Do NOT mark Mentioned for questions, warnings, conditions, rejections, or negative statements.\n- Trigger examples: "cargo contains lithium batteries", "DG attached", "DGD attached", "MSDS attached", "fumigation cert attached", "cargo is perishable", "temp control required".\n- Non-trigger examples: "please ensure cargo has no DGR", "kindly confirm if any battery inside", "if DG, please provide DGD", "do not accept dangerous goods", "ensure no lithium battery".\n- Critical flags are: Batteries / Lithium, DG / DGR, MSDS / DGD, Fumigation / ISPM15, Perishable, Temperature control, Non-stackable, Pivot weight.\n\nPermit responsibility rules:\n- permit_declaration.mentioned is true only if permit is explicitly discussed.\n- responsibility must be one of: "Shipper", "Export Ops / Our Side", "Unclear", or null when permit not mentioned.\n- "permit to follow" means Export Ops / Our Side when written as an internal/customer-service promise.\n- "shipper will self declare permit" means Shipper.\n- "permit under shipper account" means Shipper.\n- "we will declare permit" means Export Ops / Our Side.\n- "please declare permit under our permit" means Export Ops / Our Side.\n- If shipper is explicitly responsible, return Shipper.\n- If internal staff/customer service/our side is promising or arranging the permit, return Export Ops / Our Side.\n- If permit is mentioned but ownership is unclear, return Unclear.\n\nFlight number rules:\n- Flight number must capture the full airline code plus numeric portion. Never return airline code alone if a number exists.\n- Normalize flight number by removing spaces between airline code and number: SQ 0510 -> SQ0510, EK 354 -> EK354, QR 942 -> QR942.\n- Prioritize operational flight lines such as FLIGHT NO., Flight:, Scheduled Departure, and uplift point / discharge point tables.\n- If multiple flights exist, use the latest confirmed/latest operational flight.\n- Do not summarize or truncate flight numbers. SQ is not SQ0510.\n\nCleaned email body:\n${cleanedEmail}`
+          content: `Extract this exact JSON structure from the numbered cleaned email body.\n\nGeneral rules:\n- Never guess.\n- Never infer.\n- Only extract explicit information.\n- If not found, return null.\n- Do not use email sent timestamp as flight date.\n- Ignore signatures and disclaimers.\n- Focus only on operational instructions.\n- Delivery type must only be Collection or Self-delivery if explicitly stated by operational phrases such as collect, pickup, truck in, arrange collection, self-deliver, send to warehouse, deliver cargo. Otherwise null.\n- export_ops_notes must contain exact direct instruction lines meant for export ops only.\n\nPieces / pallets rules:\n- Extract pieces from table-style or sentence-style quantity/package mentions.\n- If text shows "1 PLT", "1 pallet", "1 plt", "Qty 1 Type PLT", or "Total 1 pallet", return shipment_basics.pieces as "1 PLT".\n- Also detect "2 pallets", "3 ctns", "4 cartons", "1 crate", "1 skid".\n- Normalize pallet/plt/pallets to PLT. Keep other package units concise, e.g. 3 CTNS, 4 CTNS, 1 CRATE, 1 SKID.\n- Do not leave pieces null when a quantity and package type are explicitly shown.\n\nRelative collection date rules:\n- You may use the email sent date ONLY to resolve relative collection/delivery words such as today or tomorrow.\n- Email sent date reference: ${emailSentDate || "not available"}.\n- Do NOT use email sent date as flight date.\n- If text says "tomorrow", "tomorrow morning", or "after 930am tomorrow" in an operational collection/delivery line, resolve the date using the email sent date.\n- Example: Email sent Friday, 3 July 2026 7:23 pm + "Cargo only available for collection tomorrow morning after 930am" => delivery_method.type "Collection", date "04 July 2026", time "after 930am".\n- For delivery_method.evidence, return the exact source line, e.g. "Cargo only available for collection tomorrow morning after 930am."\n- For delivery_method.date_basis, return "Resolved using email sent date: 3 July 2026." when a relative date was resolved. Otherwise null.\n\nCritical flag UI evidence rules:\n- Always include all critical flag fields.\n- If Mentioned, provide: exact evidence sentence, highlighted keyword, line_number, and email_context.\n- email_context should identify which email in the thread where possible, e.g. "latest email", "reply from customer service", "forwarded customer email". If not possible, use "Current/latest email".\n- If Not mentioned: evidence, keyword, email_context, and line_number must be null.\n\nCritical flag intent rules:\n- Status must be "Mentioned" only if the email indicates the cargo ACTUALLY contains it, is declared as it, has the document attached, or requires that handling.\n- Do NOT mark Mentioned for questions, warnings, conditions, rejections, or negative statements.\n- DG / DGR should be Mentioned only for active DG context such as cargo IS DG, DG handling required, DG packing, DG declaration, DGD, UN number, class/division, or lithium battery declaration.\n- DG / DGR must be Not mentioned for negative lines such as "please ensure cargo is not DG", "cargo must not contain DGR", "confirm non-DG", "no dangerous goods".\n- Batteries / Lithium must be Mentioned only if actual cargo contains batteries/lithium or lithium battery declaration is required/attached.\n- Batteries / Lithium must be Not mentioned for negative or question lines such as "please confirm no batteries" or "ensure no lithium batteries".\n- Magnetized must be Mentioned only if actual cargo is magnetized/magnetic or UN2807/magnetic field is declared. Keywords: magnetized, magnetic, magnet, magnetic field, UN2807.\n- Other trigger examples: "DG attached", "DGD attached", "MSDS attached", "fumigation cert attached", "cargo is perishable", "temp control required".\n- Non-trigger examples: "kindly confirm if any battery inside", "if DG, please provide DGD", "do not accept dangerous goods".\n- Critical flags are: Batteries / Lithium, DG / DGR, MSDS / DGD, Fumigation / ISPM15, Perishable, Temperature control, Non-stackable, Pivot weight, Magnetized.\n\nPermit responsibility rules:\n- permit_declaration.mentioned is true only if permit is explicitly discussed.\n- responsibility must be one of: "Shipper", "UAF / Forwarder", "Pending / To follow", "Unclear", or null when permit not mentioned.\n- permit_declaration.evidence must be the exact sentence used to decide responsibility.\n- "permit to follow" means Pending / To follow.\n- "shipper will provide permit", "shipper will self declare permit", and "permit under shipper account" mean Shipper.\n- "we will declare permit", "pls arrange permit", "please declare permit under our permit", or our-side/internal instruction to arrange/declare permit means UAF / Forwarder.\n- If ownership is unclear, return Unclear.\n\nFlight number rules:\n- Flight number must capture the full airline code plus numeric portion. Never return airline code alone if a number exists.\n- Normalize flight number by removing spaces between airline code and number: SQ 0510 -> SQ0510, EK 354 -> EK354, QR 942 -> QR942.\n- Prioritize operational flight lines such as FLIGHT NO., Flight:, Scheduled Departure, and uplift point / discharge point tables.\n- If multiple flights exist, use the latest confirmed/latest operational flight.\n- Do not summarize or truncate flight numbers. SQ is not SQ0510.\n\nNumbered cleaned email body:\n${numberedEmail}`
         }
       ],
       text: {
