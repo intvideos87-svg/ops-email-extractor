@@ -1,8 +1,6 @@
 "use client";
 
 import { ChangeEvent, DragEvent, useMemo, useRef, useState } from "react";
-import MsgReader from "msgreader";
-import MsgReaderConst from "msgreader/lib/const";
 
 type ShipmentBasics = {
   awb: string | null;
@@ -64,37 +62,6 @@ type AiExtractionResult = {
   export_ops_notes: string[];
 };
 
-const sampleEmail = `Subject: SIN export request
-From: customer.service@example.com
-Date: 04 Jul 2026, 09:18
-
-Hi Ops,
-
-Please arrange collection for the below shipment.
-
-Origin: SIN
-Destination: FRA
-AWB: 618-12345675
-HAWB: HSG456789
-Pieces: 4 wooden crates
-Gross weight: 860 kg
-Commodity: machinery spare parts
-
-Collection date: 05 Jul 2026
-Collection time: 10:30
-Cut-off time: 16:00
-Flight date: 05 Jul 2026
-Flight: SQ 0510
-
-Fumigation cert will follow.
-Battery packed with equipment. MSDS attached.
-Cargo is non-stackable.
-Permit under shipper account.
-Export ops pls take note: check fumigation cert before lodge-in.
-
-Regards,
-Customer Service`;
-
 const emptyValue = "Not found";
 
 function cleanValue(value: string) {
@@ -125,78 +92,8 @@ function parseEml(text: string) {
   return [...headers, "", decodeQuotedPrintable(bodyText)].join("\n").trim();
 }
 
-function hasUnreadableContent(value: string) {
-  return /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\uFFFD]/.test(value);
-}
-
-function decodeHtmlEntities(value: string) {
-  if (typeof document === "undefined") return value;
-  const textarea = document.createElement("textarea");
-  textarea.innerHTML = value;
-  return textarea.value;
-}
-
-function htmlToVisibleText(html: string) {
-  if (hasUnreadableContent(html)) {
-    throw new Error("Unreadable MSG HTML content");
-  }
-
-  const withoutHiddenBlocks = html
-    .replace(/<head[\s\S]*?<\/head>/gi, "\n")
-    .replace(/<style[\s\S]*?<\/style>/gi, "\n")
-    .replace(/<script[\s\S]*?<\/script>/gi, "\n")
-    .replace(/<meta[\s\S]*?>/gi, "\n")
-    .replace(/<xml[\s\S]*?<\/xml>/gi, "\n");
-
-  return decodeHtmlEntities(
-    withoutHiddenBlocks
-      .replace(/<(br|\/p|\/div|\/li|\/tr|\/h[1-6])\b[^>]*>/gi, "\n")
-      .replace(/<li\b[^>]*>/gi, "\n- ")
-      .replace(/<[^>]+>/g, " ")
-  );
-}
-
-function normalizeVisibleMsgBody(value: string | undefined) {
-  if (!value) return "";
-  if (hasUnreadableContent(value)) {
-    throw new Error("Unreadable MSG body content");
-  }
-
-  const normalized = value
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .replace(/\u00A0/g, " ")
-    .split("\n")
-    .map((line) => line.replace(/[ \t]+/g, " ").trim())
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-
-  if (normalized.replace(/\s/g, "").length < 10) {
-    throw new Error("MSG body is too short to trust");
-  }
-
-  return normalized;
-}
-
-function parseMsgFile(buffer: ArrayBuffer) {
-  MsgReaderConst.MSG.FIELD.NAME_MAPPING["1013"] = "htmlBody";
-  const reader = new MsgReader(buffer);
-  const data = reader.getFileData() as {
-    error?: string;
-    body?: string;
-    htmlBody?: string;
-  };
-
-  if (data.error) {
-    throw new Error(data.error);
-  }
-
-  return normalizeVisibleMsgBody(data.htmlBody ? htmlToVisibleText(data.htmlBody) : data.body);
-}
-
-function failMsgParsing() {
-  return "Outlook MSG drag/drop is not clean enough. Please open the email, press Ctrl+A, copy, and paste into the app.";
+function unsupportedMsgMessage() {
+  return "Outlook .msg is not supported. Please save/export as .eml or copy/paste the email thread.";
 }
 
 function isHeaderLine(line: string) {
@@ -337,14 +234,14 @@ export default function Home() {
         setEmailText(parseEml(await file.text()));
       } else if (extension === "msg") {
         setEmailText("");
-        setEmailText(parseMsgFile(await file.arrayBuffer()));
+        setMessage(unsupportedMsgMessage());
       } else {
-        setMessage("Unsupported file format. Please use .txt, .eml, or .msg.");
+        setMessage("Unsupported file format. Please use .txt or .eml.");
       }
     } catch {
       if (extension === "msg") {
         setEmailText("");
-        setMessage(failMsgParsing());
+        setMessage(unsupportedMsgMessage());
       } else {
         setMessage("The file could not be read. Please paste the email thread instead.");
       }
@@ -466,9 +363,9 @@ export default function Home() {
             onDragLeave={() => setIsDragging(false)}
             onDrop={onDrop}
           >
-            <input ref={fileInputRef} type="file" accept=".txt,.eml,.msg" onChange={onFileChange} />
+            <input ref={fileInputRef} type="file" accept=".txt,.eml" onChange={onFileChange} />
             <button className="secondaryButton" type="button" onClick={() => fileInputRef.current?.click()}>
-              Upload .txt / .eml / .msg
+              Upload .txt / .eml
             </button>
             <span>or drag and drop file here</span>
           </div>
@@ -485,9 +382,6 @@ export default function Home() {
           <div className="actions">
             <button type="button" onClick={runExtraction} disabled={isExtracting}>
               {isExtracting ? "Extracting..." : "Extract Ops Details"}
-            </button>
-            <button className="secondaryButton" type="button" onClick={() => setEmailText(sampleEmail)}>
-              Sample Email
             </button>
             <button className="ghostButton" type="button" onClick={clearAll}>
               Clear / Reset
