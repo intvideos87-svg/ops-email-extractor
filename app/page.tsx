@@ -383,8 +383,8 @@ export default function Home() {
           </div>
         </div>
         <div className="titleBlock">
-          <h1>Ops Email Extractor</h1>
-          <span>AI export ops instruction board</span>
+          <h1>Email Extractor</h1>
+          <span>Powered by A.I</span>
         </div>
       </header>
 
