@@ -42,6 +42,7 @@ type CriticalFlags = {
 
 type FlagField = {
   status: "Mentioned" | "Not mentioned";
+  interpretation: string | null;
   evidence: string | null;
   keyword: string | null;
   email_context: string | null;
@@ -585,7 +586,11 @@ export default function Home() {
             <div className="modalEvidence">
               <div>
                 <span>Status</span>
-                <strong>{selectedFlag.value.status}</strong>
+                <strong>{selectedFlag.value.status === "Mentioned" ? "Mentioned" : selectedFlag.value.evidence ? "Not active" : "Not mentioned"}</strong>
+              </div>
+              <div className="modalSentence modalInterpretation">
+                <span>AI Interpretation</span>
+                <p>{selectedFlag.value.interpretation || (selectedFlag.value.status === "Mentioned" ? "Flag is active based on the cited cargo instruction." : "No active cargo confirmation found for this flag.")}</p>
               </div>
               <div>
                 <span>Email in thread</span>
@@ -596,7 +601,7 @@ export default function Home() {
                 <strong>{selectedFlag.value.line_number ? `Line ${selectedFlag.value.line_number}` : "Not available"}</strong>
               </div>
               <div className="modalSentence">
-                <span>Evidence</span>
+                <span>Raw Evidence</span>
                 <p>{highlightKeyword(selectedFlag.value.evidence || "No evidence available.", selectedFlag.value.keyword)}</p>
               </div>
             </div>
@@ -643,17 +648,17 @@ function FlagsCard({ flags, onSelect }: { flags: CriticalFlags; onSelect: (flag:
       <div className="flagGrid">
         {entries.map(([key, value]) => (
           <button
-            className={`flagItem flagButton ${value.status === "Mentioned" ? "isClickable" : ""}`}
+            className={`flagItem flagButton ${value.evidence ? "isClickable" : ""}`}
             key={key}
             type="button"
             onClick={() => {
-              if (value.status === "Mentioned") onSelect({ label: flagLabel(key), value });
+              if (value.evidence) onSelect({ label: flagLabel(key), value });
             }}
-            disabled={value.status !== "Mentioned"}
+            disabled={!value.evidence}
           >
             <div>
               <strong>{flagLabel(key)}</strong>
-              <p>{value.status === "Mentioned" ? "Click to verify evidence" : "Not mentioned"}</p>
+              <p>{value.evidence ? "Click to verify evidence" : "Not mentioned"}</p>
             </div>
             <span className={`badge ${value.status === "Mentioned" ? "critical" : "clear"}`}>{value.status}</span>
           </button>

@@ -640,6 +640,15 @@ textarea:focus {
   align-items: start;
 }
 
+.modalInterpretation {
+  border-left: 4px solid var(--red) !important;
+  background: #fff6f7 !important;
+}
+
+.modalInterpretation p {
+  font-weight: 800;
+}
+
 mark {
   border-radius: 4px;
   padding: 1px 4px;

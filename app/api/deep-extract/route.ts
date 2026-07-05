@@ -7,9 +7,10 @@ const nullableString = {
 const flagFieldSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["status", "evidence", "keyword", "email_context", "line_number"],
+  required: ["status", "interpretation", "evidence", "keyword", "email_context", "line_number"],
   properties: {
     status: { type: "string", enum: ["Mentioned", "Not mentioned"] },
+    interpretation: nullableString,
     evidence: nullableString,
     keyword: nullableString,
     email_context: nullableString,
@@ -102,12 +103,15 @@ function normalizeString(value: unknown) {
 
 function normalizeFlag(value: any) {
   const mentioned = value?.status === "Mentioned";
+  const evidence = normalizeString(value?.evidence);
+
   return {
     status: mentioned ? "Mentioned" : "Not mentioned",
-    evidence: mentioned ? normalizeString(value?.evidence) : null,
-    keyword: mentioned ? normalizeString(value?.keyword) : null,
-    email_context: mentioned ? normalizeString(value?.email_context) || "Current/latest email" : null,
-    line_number: mentioned && typeof value?.line_number === "number" ? value.line_number : null
+    interpretation: normalizeString(value?.interpretation),
+    evidence,
+    keyword: normalizeString(value?.keyword),
+    email_context: normalizeString(value?.email_context) || (evidence ? "Current/latest email" : null),
+    line_number: typeof value?.line_number === "number" ? value.line_number : null
   };
 }
 
@@ -235,7 +239,75 @@ export async function POST(request: Request) {
         },
         {
           role: "user",
-          content: `Extract this exact JSON structure from the numbered cleaned email body.\n\nGeneral rules:\n- Never guess.\n- Never infer.\n- Only extract explicit information.\n- If not found, return null.\n- Do not use email sent timestamp as flight date.\n- Ignore signatures and disclaimers.\n- Focus only on operational instructions.\n- Delivery type must only be Collection or Self-delivery if explicitly stated by operational phrases such as collect, pickup, truck in, arrange collection, self-deliver, send to warehouse, deliver cargo. Otherwise null.\n- export_ops_notes must contain exact direct instruction lines meant for export ops only.\n\nPieces / pallets rules:\n- Extract pieces from table-style or sentence-style quantity/package mentions.\n- If text shows "1 PLT", "1 pallet", "1 plt", "Qty 1 Type PLT", or "Total 1 pallet", return shipment_basics.pieces as "1 PLT".\n- Also detect "2 pallets", "3 ctns", "4 cartons", "1 crate", "1 skid".\n- Normalize pallet/plt/pallets to PLT. Keep other package units concise, e.g. 3 CTNS, 4 CTNS, 1 CRATE, 1 SKID.\n- Do not leave pieces null when a quantity and package type are explicitly shown.\n\nRelative collection date rules:\n- You may use the email sent date ONLY to resolve relative collection/delivery words such as today or tomorrow.\n- Email sent date reference: ${emailSentDate || "not available"}.\n- Do NOT use email sent date as flight date.\n- If text says "tomorrow", "tomorrow morning", or "after 930am tomorrow" in an operational collection/delivery line, resolve the date using the email sent date.\n- Example: Email sent Friday, 3 July 2026 7:23 pm + "Cargo only available for collection tomorrow morning after 930am" => delivery_method.type "Collection", date "04 July 2026", time "after 930am".\n- For delivery_method.evidence, return the exact source line, e.g. "Cargo only available for collection tomorrow morning after 930am."\n- For delivery_method.date_basis, return "Resolved using email sent date: 3 July 2026." when a relative date was resolved. Otherwise null.\n\nCritical flag UI evidence rules:\n- Always include all critical flag fields.\n- If Mentioned, provide: exact evidence sentence, highlighted keyword, line_number, and email_context.\n- email_context should identify which email in the thread where possible, e.g. "latest email", "reply from customer service", "forwarded customer email". If not possible, use "Current/latest email".\n- If Not mentioned: evidence, keyword, email_context, and line_number must be null.\n\nCritical flag intent rules:\n- Status must be "Mentioned" only if the email indicates the cargo ACTUALLY contains it, is declared as it, has the document attached, or requires that handling.\n- Do NOT mark Mentioned for questions, warnings, conditions, rejections, or negative statements.\n- DG / DGR should be Mentioned only for active DG context such as cargo IS DG, DG handling required, DG packing, DG declaration, DGD, UN number, class/division, or lithium battery declaration.\n- DG / DGR must be Not mentioned for negative lines such as "please ensure cargo is not DG", "cargo must not contain DGR", "confirm non-DG", "no dangerous goods".\n- Batteries / Lithium must be Mentioned only if actual cargo contains batteries/lithium or lithium battery declaration is required/attached.\n- Batteries / Lithium must be Not mentioned for negative or question lines such as "please confirm no batteries" or "ensure no lithium batteries".\n- Magnetized must be Mentioned only if actual cargo is magnetized/magnetic or UN2807/magnetic field is declared. Keywords: magnetized, magnetic, magnet, magnetic field, UN2807.\n- Other trigger examples: "DG attached", "DGD attached", "MSDS attached", "fumigation cert attached", "cargo is perishable", "temp control required".\n- Non-trigger examples: "kindly confirm if any battery inside", "if DG, please provide DGD", "do not accept dangerous goods".\n- Critical flags are: Batteries / Lithium, DG / DGR, MSDS / DGD, Fumigation / ISPM15, Perishable, Temperature control, Non-stackable, Pivot weight, Magnetized.\n\nPermit responsibility rules:\n- permit_declaration.mentioned is true only if permit is explicitly discussed.\n- responsibility must be one of: "Shipper", "UAF / Forwarder", "Pending / To follow", "Unclear", or null when permit not mentioned.\n- permit_declaration.evidence must be the exact sentence used to decide responsibility.\n- "permit to follow" means Pending / To follow.\n- "shipper will provide permit", "shipper will self declare permit", and "permit under shipper account" mean Shipper.\n- "we will declare permit", "pls arrange permit", "please declare permit under our permit", or our-side/internal instruction to arrange/declare permit means UAF / Forwarder.\n- If ownership is unclear, return Unclear.\n\nFlight number rules:\n- Flight number must capture the full airline code plus numeric portion. Never return airline code alone if a number exists.\n- Normalize flight number by removing spaces between airline code and number: SQ 0510 -> SQ0510, EK 354 -> EK354, QR 942 -> QR942.\n- Prioritize operational flight lines such as FLIGHT NO., Flight:, Scheduled Departure, and uplift point / discharge point tables.\n- If multiple flights exist, use the latest confirmed/latest operational flight.\n- Do not summarize or truncate flight numbers. SQ is not SQ0510.\n\nNumbered cleaned email body:\n${numberedEmail}`
+          content: `Extract this exact JSON structure from the numbered cleaned email body.
+
+General rules:
+- Never guess.
+- Never infer.
+- Only extract explicit information.
+- If not found, return null.
+- Do not use email sent timestamp as flight date.
+- Ignore signatures and disclaimers.
+- Focus only on operational instructions.
+- Delivery type must only be Collection or Self-delivery if explicitly stated by operational phrases such as collect, pickup, truck in, arrange collection, self-deliver, send to warehouse, deliver cargo. Otherwise null.
+- export_ops_notes must contain exact direct instruction lines meant for export ops only.
+
+Pieces / pallets rules:
+- Extract pieces from table-style or sentence-style quantity/package mentions.
+- If text shows "1 PLT", "1 pallet", "1 plt", "Qty 1 Type PLT", or "Total 1 pallet", return shipment_basics.pieces as "1 PLT".
+- Also detect "2 pallets", "3 ctns", "4 cartons", "1 crate", "1 skid".
+- Normalize pallet/plt/pallets to PLT. Keep other package units concise, e.g. 3 CTNS, 4 CTNS, 1 CRATE, 1 SKID.
+- Do not leave pieces null when a quantity and package type are explicitly shown.
+
+Relative collection date rules:
+- You may use the email sent date ONLY to resolve relative collection/delivery words such as today or tomorrow.
+- Email sent date reference: ${emailSentDate || "not available"}.
+- Do NOT use email sent date as flight date.
+- If text says "tomorrow", "tomorrow morning", or "after 930am tomorrow" in an operational collection/delivery line, resolve the date using the email sent date.
+- Example: Email sent Friday, 3 July 2026 7:23 pm + "Cargo only available for collection tomorrow morning after 930am" => delivery_method.type "Collection", date "04 July 2026", time "after 930am".
+- For delivery_method.evidence, return the exact source line, e.g. "Cargo only available for collection tomorrow morning after 930am."
+- For delivery_method.date_basis, return "Resolved using email sent date: 3 July 2026." when a relative date was resolved. Otherwise null.
+
+Critical flag UI evidence rules:
+- Always include all critical flag fields.
+- interpretation must be concise, maximum 1-2 lines. Interpret operational meaning; do not just repeat the source text.
+- If Mentioned, provide: concise interpretation, exact evidence sentence, highlighted keyword, line_number, and email_context.
+- email_context should identify which email in the thread where possible, e.g. "latest email", "reply from customer service", "forwarded customer email". If not possible, use "Current/latest email".
+- If Not mentioned because there is no relevant text: interpretation, evidence, keyword, email_context, and line_number must be null.
+- If Not mentioned because the text is negative, a restriction, warning, question, or check, keep status "Not mentioned" but provide a concise interpretation, exact evidence sentence, keyword, line_number, and email_context.
+- Negative interpretation example for DG: "DGR was mentioned only as a restriction/check. Cargo itself is NOT declared as DG."
+- Mentioned interpretation example for batteries: "Shipment contains lithium-ion batteries (UN3481) under PI967 Section II. Battery cargo confirmed."
+
+Critical flag intent rules:
+- Status must be "Mentioned" only if the email indicates the cargo ACTUALLY contains it, is declared as it, has the document attached, or requires that handling.
+- Do NOT mark Mentioned for questions, warnings, conditions, rejections, or negative statements.
+- DG / DGR should be Mentioned only for active DG context such as cargo IS DG, DG handling required, DG packing, DG declaration, DGD, UN number, class/division, or lithium battery declaration.
+- DG / DGR must be Not mentioned for negative lines such as "please ensure cargo is not DG", "cargo must not contain DGR", "confirm non-DG", "no dangerous goods".
+- Batteries / Lithium must be Mentioned only if actual cargo contains batteries/lithium or lithium battery declaration is required/attached.
+- Batteries / Lithium must be Not mentioned for negative or question lines such as "please confirm no batteries" or "ensure no lithium batteries".
+- Magnetized must be Mentioned only if actual cargo is magnetized/magnetic or UN2807/magnetic field is declared. Keywords: magnetized, magnetic, magnet, magnetic field, UN2807.
+- Other trigger examples: "DG attached", "DGD attached", "MSDS attached", "fumigation cert attached", "cargo is perishable", "temp control required".
+- Non-trigger examples: "kindly confirm if any battery inside", "if DG, please provide DGD", "do not accept dangerous goods".
+- Critical flags are: Batteries / Lithium, DG / DGR, MSDS / DGD, Fumigation / ISPM15, Perishable, Temperature control, Non-stackable, Pivot weight, Magnetized.
+
+Permit responsibility rules:
+- permit_declaration.mentioned is true only if permit is explicitly discussed.
+- responsibility must be one of: "Shipper", "UAF / Forwarder", "Pending / To follow", "Unclear", or null when permit not mentioned.
+- permit_declaration.evidence must be the exact sentence used to decide responsibility.
+- "permit to follow" means Pending / To follow.
+- "shipper will provide permit", "shipper will self declare permit", and "permit under shipper account" mean Shipper.
+- "we will declare permit", "pls arrange permit", "please declare permit under our permit", or our-side/internal instruction to arrange/declare permit means UAF / Forwarder.
+- If ownership is unclear, return Unclear.
+
+Flight number rules:
+- Flight number must capture the full airline code plus numeric portion. Never return airline code alone if a number exists.
+- Normalize flight number by removing spaces between airline code and number: SQ 0510 -> SQ0510, EK 354 -> EK354, QR 942 -> QR942.
+- Prioritize operational flight lines such as FLIGHT NO., Flight:, Scheduled Departure, and uplift point / discharge point tables.
+- If multiple flights exist, use the latest confirmed/latest operational flight.
+- Do not summarize or truncate flight numbers. SQ is not SQ0510.
+
+Numbered cleaned email body:
+${numberedEmail}`
         }
       ],
       text: {
