@@ -82,8 +82,8 @@ button:disabled {
 }
 
 .brand img {
-  width: 52px;
-  height: 52px;
+  width: 46px;
+  height: 46px;
   object-fit: contain;
   flex: 0 0 auto;
 }
@@ -647,6 +647,18 @@ textarea:focus {
 
 .modalInterpretation p {
   font-weight: 800;
+}
+
+.reasonList {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.reasonList li + li {
+  margin-top: 4px;
 }
 
 mark {

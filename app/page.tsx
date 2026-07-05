@@ -164,6 +164,28 @@ function displayValue(value: string | null | boolean) {
   return value && cleanValue(value) ? value : emptyValue;
 }
 
+function extractSender(value: string | null) {
+  if (!value) return null;
+  const match = value.match(/(?:sender|from):\s*([^,\n;]+)/i);
+  return match ? cleanValue(match[1]) : null;
+}
+
+function extractTimestamp(value: string | null) {
+  if (!value) return null;
+  const match = value.match(/(?:timestamp|sent|date):\s*([^,\n;]+)/i);
+  return match ? cleanValue(match[1]) : null;
+}
+
+function buildFlagReasons(flag: FlagField) {
+  const reasons: string[] = [];
+  if (flag.keyword) reasons.push(`Found keyword: ${flag.keyword}`);
+  if (flag.evidence?.match(/\bUN\d{4}\b/i)) reasons.push(`Found UN number: ${flag.evidence.match(/\bUN\d{4}\b/i)?.[0].toUpperCase()}`);
+  if (flag.evidence?.match(/\bPI\s*\d{3}\b/i)) reasons.push(`Found packing instruction: ${flag.evidence.match(/\bPI\s*\d{3}\b/i)?.[0].replace(/\s+/g, "")}`);
+  if (flag.status === "Mentioned" && flag.evidence) reasons.push("Positive cargo declaration context");
+  if (flag.status === "Not mentioned" && flag.evidence) reasons.push("Mentioned only as restriction/check");
+  return reasons.length ? reasons : [flag.status === "Mentioned" ? "AI classified this as an active cargo flag" : "No active cargo confirmation found"];
+}
+
 function buildSummary(result: AiExtractionResult, cleanedEmail: string) {
   return [
     "Ops Email Extractor Summary",
@@ -332,7 +354,7 @@ export default function Home() {
     <main className="app">
       <header className="topbar">
         <div className="brand">
-          <img src="/union-airfreight-logo.svg" alt="Union Airfreight logo" />
+          <img src="/uaf-logo.jpeg" alt="Union Airfreight logo" />
           <div>
             <p>Built By Muhd Ridwan For</p>
             <strong>Union Airfreight (Singapore) Pte Ltd</strong>
@@ -487,16 +509,24 @@ export default function Home() {
                 <p>{selectedFlag.value.interpretation || (selectedFlag.value.status === "Mentioned" ? "Flag is active based on the cited cargo instruction." : "No active cargo confirmation found for this flag.")}</p>
               </div>
               <div>
-                <span>Email in thread</span>
-                <strong>{selectedFlag.value.email_context || "Current/latest email"}</strong>
+                <span>Sender</span>
+                <strong>{extractSender(selectedFlag.value.email_context) || extractSender(selectedFlag.value.evidence) || "Not available"}</strong>
               </div>
               <div>
-                <span>Line number</span>
-                <strong>{selectedFlag.value.line_number ? `Line ${selectedFlag.value.line_number}` : "Not available"}</strong>
+                <span>Timestamp</span>
+                <strong>{extractTimestamp(selectedFlag.value.email_context) || extractTimestamp(selectedFlag.value.evidence) || "Not available"}</strong>
               </div>
               <div className="modalSentence">
-                <span>Raw Evidence</span>
+                <span>Matched sentence</span>
                 <p>{highlightKeyword(selectedFlag.value.evidence || "No evidence available.", selectedFlag.value.keyword)}</p>
+              </div>
+              <div className="modalSentence">
+                <span>{selectedFlag.value.status === "Mentioned" ? "Why flagged" : "Why NOT flagged"}</span>
+                <ul className="reasonList">
+                  {buildFlagReasons(selectedFlag.value).map((reason) => (
+                    <li key={reason}>{reason}</li>
+                  ))}
+                </ul>
               </div>
             </div>
           </div>
