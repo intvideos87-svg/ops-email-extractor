@@ -164,6 +164,28 @@ function displayValue(value: string | null | boolean) {
   return value && cleanValue(value) ? value : emptyValue;
 }
 
+function fieldLabel(key: string) {
+  const labels: Record<string, string> = {
+    awb: "AWB",
+    hawb: "HAWB",
+    origin: "Origin",
+    destination: "Destination",
+    pieces: "Pieces",
+    weight: "Weight",
+    commodity: "Commodity",
+    type: "Type",
+    date: "Date",
+    time: "Time",
+    evidence: "Evidence",
+    date_basis: "Date Basis",
+    flight_number: "Flight Number",
+    flight_date: "Flight Date",
+    cutoff: "Cut-off"
+  };
+
+  return labels[key] || key.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function extractSender(value: string | null) {
   if (!value) return null;
   const match = value.match(/(?:sender|from):\s*([^,\n;]+)/i);
@@ -371,7 +393,7 @@ export default function Home() {
           <div className="panelHeader">
             <div>
               <span className="eyebrow">Input</span>
-              <h2>Email thread</h2>
+              <h2>Email Thread</h2>
             </div>
             {fileName && <span className="fileBadge">{fileName}</span>}
           </div>
@@ -415,7 +437,7 @@ export default function Home() {
           <div className="panelHeader">
             <div>
               <span className="eyebrow">Output</span>
-              <h2>Export ops action board</h2>
+              <h2>Action Board</h2>
             </div>
             <div className="outputActions">
               <button className="secondaryButton" type="button" onClick={copySummary} disabled={!result}>
@@ -480,7 +502,7 @@ export default function Home() {
 
               <details className="card wide cleanedPreview">
                 <summary>Cleaned Email Preview</summary>
-                <pre>{`${sentDateBasis ? `Email sent date basis: ${sentDateBasis}\n\n` : ""}${cleanedEmail || "No analyzable text after cleaning."}`}</pre>
+                <pre>{`${sentDateBasis ? `Email Sent Date Basis: ${sentDateBasis}\n\n` : ""}${cleanedEmail || "No analyzable text after cleaning."}`}</pre>
               </details>
             </div>
           )}
@@ -492,7 +514,7 @@ export default function Home() {
           <div className="modalCard">
             <div className="modalHeader">
               <div>
-                <span className="eyebrow">Critical flag evidence</span>
+                <span className="eyebrow">Critical Flag Evidence</span>
                 <h3>{selectedFlag.label}</h3>
               </div>
               <button className="ghostButton modalClose" type="button" onClick={() => setSelectedFlag(null)}>
@@ -517,11 +539,11 @@ export default function Home() {
                 <strong>{extractTimestamp(selectedFlag.value.email_context) || extractTimestamp(selectedFlag.value.evidence) || "Not available"}</strong>
               </div>
               <div className="modalSentence">
-                <span>Matched sentence</span>
+                <span>Matched Sentence</span>
                 <p>{highlightKeyword(selectedFlag.value.evidence || "No evidence available.", selectedFlag.value.keyword)}</p>
               </div>
               <div className="modalSentence">
-                <span>{selectedFlag.value.status === "Mentioned" ? "Why flagged" : "Why NOT flagged"}</span>
+                <span>{selectedFlag.value.status === "Mentioned" ? "Why Flagged" : "Why NOT Flagged"}</span>
                 <ul className="reasonList">
                   {buildFlagReasons(selectedFlag.value).map((reason) => (
                     <li key={reason}>{reason}</li>
@@ -549,7 +571,7 @@ function ObjectCard({ title, rows }: { title: string; rows: Record<string, strin
       <div className="dataTable">
         {entries.map(([key, value]) => (
           <div className="dataRow" key={key}>
-            <span>{key.replaceAll("_", " ")}</span>
+            <span>{fieldLabel(key)}</span>
             <strong className={!value ? "mutedValue" : ""}>{displayValue(value)}</strong>
             <small>AI</small>
           </div>
