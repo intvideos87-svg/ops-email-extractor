@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { ChangeEvent, DragEvent, useMemo, useRef, useState } from "react";
 
 type ShipmentBasics = {
@@ -43,8 +44,10 @@ type FlagField = {
   interpretation: string | null;
   evidence: string | null;
   keyword: string | null;
-  email_context: string | null;
-  line_number: number | null;
+  conversation_snippet: string | null;
+  sender: string | null;
+  timestamp: string | null;
+  decision_reasons: string[];
 };
 
 type PermitDeclaration = {
@@ -97,11 +100,11 @@ function unsupportedMsgMessage() {
 }
 
 function isHeaderLine(line: string) {
-  return /^(from|sent|to|cc|bcc|subject|date):\s*/i.test(line);
+  return /^(to|cc|bcc|subject):\s*/i.test(line);
 }
 
 function isReplyHeader(line: string) {
-  return /^-+\s*original message\s*-+$/i.test(line) || /^on .+wrote:$/i.test(line) || /^from:\s*/i.test(line);
+  return /^-+\s*original message\s*-+$/i.test(line) || /^on .+wrote:$/i.test(line);
 }
 
 function isFooterStart(line: string) {
@@ -133,6 +136,18 @@ function cleanEmailForAnalysis(input: string) {
 
     if (skippingFooter) continue;
     if (isHeaderLine(line) || isFooterNoise(line)) continue;
+
+    const senderMatch = line.match(/^from:\s*(.+)$/i);
+    if (senderMatch) {
+      cleanedLines.push(`Sender: ${cleanValue(senderMatch[1])}`);
+      continue;
+    }
+
+    const timestampMatch = line.match(/^(sent|date):\s*(.+)$/i);
+    if (timestampMatch) {
+      cleanedLines.push(`Timestamp: ${cleanValue(timestampMatch[2])}`);
+      continue;
+    }
 
     if (isFooterStart(line)) {
       skippingFooter = true;
@@ -332,7 +347,7 @@ export default function Home() {
     <main className="app">
       <header className="topbar">
         <div className="brand">
-          <img src="/union-airfreight-logo.svg" alt="Union Airfreight logo" />
+          <Image className="brandLogo" src="/uaf-logo.jpeg" alt="Union Airfreight logo" width={46} height={46} priority />
           <div>
             <p>Built By Muhd Ridwan For</p>
             <strong>Union Airfreight (Singapore) Pte Ltd</strong>
@@ -486,17 +501,33 @@ export default function Home() {
                 <span>AI Interpretation</span>
                 <p>{selectedFlag.value.interpretation || (selectedFlag.value.status === "Mentioned" ? "Flag is active based on the cited cargo instruction." : "No active cargo confirmation found for this flag.")}</p>
               </div>
-              <div>
-                <span>Email in thread</span>
-                <strong>{selectedFlag.value.email_context || "Current/latest email"}</strong>
+              <div className="modalSentence modalContext">
+                <span>Conversation snippet</span>
+                <pre>{selectedFlag.value.conversation_snippet || "No surrounding conversation snippet available."}</pre>
               </div>
               <div>
-                <span>Line number</span>
-                <strong>{selectedFlag.value.line_number ? `Line ${selectedFlag.value.line_number}` : "Not available"}</strong>
+                <span>Sender</span>
+                <strong>{selectedFlag.value.sender || "Not available"}</strong>
+              </div>
+              <div>
+                <span>Timestamp</span>
+                <strong>{selectedFlag.value.timestamp || "Not available"}</strong>
               </div>
               <div className="modalSentence">
-                <span>Raw Evidence</span>
+                <span>Matched sentence</span>
                 <p>{highlightKeyword(selectedFlag.value.evidence || "No evidence available.", selectedFlag.value.keyword)}</p>
+              </div>
+              <div className="modalSentence">
+                <span>{selectedFlag.value.status === "Mentioned" ? "Why flagged" : "Why NOT flagged"}</span>
+                {selectedFlag.value.decision_reasons.length ? (
+                  <ul className="reasonList">
+                    {selectedFlag.value.decision_reasons.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>No decision reason available.</p>
+                )}
               </div>
             </div>
           </div>

@@ -7,14 +7,19 @@ const nullableString = {
 const flagFieldSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["status", "interpretation", "evidence", "keyword", "email_context", "line_number"],
+  required: ["status", "interpretation", "evidence", "keyword", "conversation_snippet", "sender", "timestamp", "decision_reasons"],
   properties: {
     status: { type: "string", enum: ["Mentioned", "Not mentioned"] },
     interpretation: nullableString,
     evidence: nullableString,
     keyword: nullableString,
-    email_context: nullableString,
-    line_number: { type: ["number", "null"] }
+    conversation_snippet: nullableString,
+    sender: nullableString,
+    timestamp: nullableString,
+    decision_reasons: {
+      type: "array",
+      items: { type: "string" }
+    }
   }
 };
 
@@ -104,14 +109,19 @@ function normalizeString(value: unknown) {
 function normalizeFlag(value: any) {
   const mentioned = value?.status === "Mentioned";
   const evidence = normalizeString(value?.evidence);
+  const decisionReasons = Array.isArray(value?.decision_reasons)
+    ? value.decision_reasons.filter((reason: unknown) => typeof reason === "string" && reason.trim()).map((reason: string) => reason.trim())
+    : [];
 
   return {
     status: mentioned ? "Mentioned" : "Not mentioned",
     interpretation: normalizeString(value?.interpretation),
     evidence,
     keyword: normalizeString(value?.keyword),
-    email_context: normalizeString(value?.email_context) || (evidence ? "Current/latest email" : null),
-    line_number: typeof value?.line_number === "number" ? value.line_number : null
+    conversation_snippet: normalizeString(value?.conversation_snippet),
+    sender: normalizeString(value?.sender),
+    timestamp: normalizeString(value?.timestamp),
+    decision_reasons: decisionReasons
   };
 }
 
@@ -271,10 +281,13 @@ Relative collection date rules:
 Critical flag UI evidence rules:
 - Always include all critical flag fields.
 - interpretation must be concise, maximum 1-2 lines. Interpret operational meaning; do not just repeat the source text.
-- If Mentioned, provide: concise interpretation, exact evidence sentence, highlighted keyword, line_number, and email_context.
-- email_context should identify which email in the thread where possible, e.g. "latest email", "reply from customer service", "forwarded customer email". If not possible, use "Current/latest email".
-- If Not mentioned because there is no relevant text: interpretation, evidence, keyword, email_context, and line_number must be null.
-- If Not mentioned because the text is negative, a restriction, warning, question, or check, keep status "Not mentioned" but provide a concise interpretation, exact evidence sentence, keyword, line_number, and email_context.
+- If Mentioned, provide: concise interpretation, exact matched sentence as evidence, highlighted keyword, conversation_snippet, sender, timestamp, and decision_reasons.
+- conversation_snippet must be 2-4 nearby lines before and after the matched evidence where available, copied from the cleaned email. Include speaker labels such as Customer/Ops only if they are explicitly present. Do not invent speakers.
+- sender should come from the nearest preceding "Sender:" metadata line for that part of the thread. If none is available, return null.
+- timestamp should come from the nearest preceding "Timestamp:" metadata line for that part of the thread. If none is available, return null.
+- decision_reasons must be short operational bullets, e.g. "Found keyword: batteries", "Found UN number: UN3481", "Positive cargo declaration context", "Mentioned only as restriction", "Negative wording detected: ensure no DG".
+- If Not mentioned because there is no relevant text: interpretation, evidence, keyword, conversation_snippet, sender, timestamp must be null and decision_reasons must be [].
+- If Not mentioned because the text is negative, a restriction, warning, question, or check, keep status "Not mentioned" but provide a concise interpretation, exact evidence sentence, keyword, conversation_snippet, sender, timestamp, and decision_reasons explaining why it is not active.
 - Negative interpretation example for DG: "DGR was mentioned only as a restriction/check. Cargo itself is NOT declared as DG."
 - Mentioned interpretation example for batteries: "Shipment contains lithium-ion batteries (UN3481) under PI967 Section II. Battery cargo confirmed."
 

@@ -81,9 +81,9 @@ button:disabled {
   min-width: 280px;
 }
 
-.brand img {
-  width: 52px;
-  height: 52px;
+.brandLogo {
+  width: 46px;
+  height: 46px;
   object-fit: contain;
   flex: 0 0 auto;
 }
@@ -582,6 +582,8 @@ textarea:focus {
 
 .modalCard {
   width: min(680px, 100%);
+  max-height: min(88vh, 760px);
+  overflow: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
@@ -628,7 +630,9 @@ textarea:focus {
 }
 
 .modalEvidence strong,
-.modalEvidence p {
+.modalEvidence p,
+.modalEvidence pre,
+.reasonList {
   margin: 0;
   color: var(--ink);
   font-size: 14px;
@@ -636,8 +640,17 @@ textarea:focus {
   overflow-wrap: anywhere;
 }
 
+.modalEvidence pre {
+  white-space: pre-wrap;
+  font-family: inherit;
+}
+
 .modalSentence {
   align-items: start;
+}
+
+.modalContext {
+  background: #f6f8fa !important;
 }
 
 .modalInterpretation {
@@ -647,6 +660,14 @@ textarea:focus {
 
 .modalInterpretation p {
   font-weight: 800;
+}
+
+.reasonList {
+  padding-left: 18px;
+}
+
+.reasonList li + li {
+  margin-top: 4px;
 }
 
 mark {
