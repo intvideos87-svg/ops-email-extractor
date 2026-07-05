@@ -14,6 +14,11 @@ const flagFieldSchema = {
   }
 };
 
+const responsibilitySchema = {
+  type: ["string", "null"],
+  enum: ["Shipper", "Export Ops / Our Side", "Unclear", null]
+};
+
 const extractionSchema = {
   type: "object",
   additionalProperties: false,
@@ -74,7 +79,7 @@ const extractionSchema = {
       required: ["mentioned", "responsibility"],
       properties: {
         mentioned: { type: "boolean" },
-        responsibility: nullableString
+        responsibility: responsibilitySchema
       }
     },
     export_ops_notes: {
@@ -103,7 +108,15 @@ function normalizeFlightNumber(value: unknown) {
   return match ? `${match[1].toUpperCase()}${match[2]}` : normalized;
 }
 
+function normalizeResponsibility(value: unknown, permitMentioned: boolean) {
+  if (!permitMentioned) return null;
+  if (value === "Shipper" || value === "Export Ops / Our Side" || value === "Unclear") return value;
+  return "Unclear";
+}
+
 function normalizeResult(result: any) {
+  const permitMentioned = result?.permit_declaration?.mentioned === true;
+
   return {
     shipment_basics: {
       awb: normalizeString(result?.shipment_basics?.awb),
@@ -135,8 +148,8 @@ function normalizeResult(result: any) {
       pivot_weight: normalizeFlag(result?.critical_flags?.pivot_weight)
     },
     permit_declaration: {
-      mentioned: result?.permit_declaration?.mentioned === true,
-      responsibility: normalizeString(result?.permit_declaration?.responsibility)
+      mentioned: permitMentioned,
+      responsibility: normalizeResponsibility(result?.permit_declaration?.responsibility, permitMentioned)
     },
     export_ops_notes: Array.isArray(result?.export_ops_notes) ? result.export_ops_notes.filter((note: unknown) => typeof note === "string" && note.trim()).map((note: string) => note.trim()) : []
   };
@@ -167,11 +180,11 @@ export async function POST(request: Request) {
         {
           role: "system",
           content:
-            "You are an export airfreight operations extraction engine. Return strict JSON only. Never guess. Never infer. Only extract explicit operational instructions from the cleaned email body. If a value is not explicitly found, return null. For critical flags, always return every flag with status 'Mentioned' or 'Not mentioned'."
+            "You are an export airfreight operations extraction engine. Return strict JSON only. Never guess. Never infer. Only extract explicit operational instructions from the cleaned email body. If a value is not explicitly found, return null. For critical flags, always return every flag with status 'Mentioned' or 'Not mentioned'. Context and intent matter more than keywords."
         },
         {
           role: "user",
-          content: `Extract this exact JSON structure from the cleaned email body.\n\nRules:\n- Never guess.\n- Never infer.\n- Only extract explicit information.\n- If not found, return null.\n- Do not use email sent timestamp as flight date.\n- Ignore signatures and disclaimers.\n- Focus only on operational instructions.\n- Delivery type must only be Collection or Self-delivery if explicitly stated by operational phrases such as collect, pickup, truck in, arrange collection, self-deliver, send to warehouse, deliver cargo. Otherwise null.\n- export_ops_notes must contain exact direct instruction lines meant for export ops only.\n- Critical flags must always include all fields. Status must be "Mentioned" or "Not mentioned". If Mentioned, evidence must be the exact source line. If Not mentioned, evidence must be null.\n- Critical flags are: Batteries / Lithium, DG / DGR, MSDS / DGD, Fumigation / ISPM15, Perishable, Temperature control, Non-stackable, Pivot weight.\n- Flight number must capture the full airline code plus numeric portion. Never return airline code alone if a number exists.\n- Normalize flight number by removing spaces between airline code and number: SQ 0510 -> SQ0510, EK 354 -> EK354, QR 942 -> QR942.\n- Prioritize operational flight lines such as FLIGHT NO., Flight:, Scheduled Departure, and uplift point / discharge point tables.\n- If multiple flights exist, use the latest confirmed/latest operational flight.\n- Do not summarize or truncate flight numbers. SQ is not SQ0510.\n\nCleaned email body:\n${cleanedEmail}`
+          content: `Extract this exact JSON structure from the cleaned email body.\n\nGeneral rules:\n- Never guess.\n- Never infer.\n- Only extract explicit information.\n- If not found, return null.\n- Do not use email sent timestamp as flight date.\n- Ignore signatures and disclaimers.\n- Focus only on operational instructions.\n- Delivery type must only be Collection or Self-delivery if explicitly stated by operational phrases such as collect, pickup, truck in, arrange collection, self-deliver, send to warehouse, deliver cargo. Otherwise null.\n- export_ops_notes must contain exact direct instruction lines meant for export ops only.\n\nCritical flag intent rules:\n- Always include all critical flag fields.\n- Status must be "Mentioned" only if the email indicates the cargo ACTUALLY contains it, is declared as it, has the document attached, or requires that handling.\n- If Mentioned, evidence must be the exact source line.\n- If Not mentioned, evidence must be null.\n- Do NOT mark Mentioned for questions, warnings, conditions, rejections, or negative statements.\n- Trigger examples: "cargo contains lithium batteries", "DG attached", "DGD attached", "MSDS attached", "fumigation cert attached", "cargo is perishable", "temp control required".\n- Non-trigger examples: "please ensure cargo has no DGR", "kindly confirm if any battery inside", "if DG, please provide DGD", "do not accept dangerous goods", "ensure no lithium battery".\n- Critical flags are: Batteries / Lithium, DG / DGR, MSDS / DGD, Fumigation / ISPM15, Perishable, Temperature control, Non-stackable, Pivot weight.\n\nPermit responsibility rules:\n- permit_declaration.mentioned is true only if permit is explicitly discussed.\n- responsibility must be one of: "Shipper", "Export Ops / Our Side", "Unclear", or null when permit not mentioned.\n- "permit to follow" means Export Ops / Our Side when written as an internal/customer-service promise.\n- "shipper will self declare permit" means Shipper.\n- "permit under shipper account" means Shipper.\n- "we will declare permit" means Export Ops / Our Side.\n- "please declare permit under our permit" means Export Ops / Our Side.\n- If shipper is explicitly responsible, return Shipper.\n- If internal staff/customer service/our side is promising or arranging the permit, return Export Ops / Our Side.\n- If permit is mentioned but ownership is unclear, return Unclear.\n\nFlight number rules:\n- Flight number must capture the full airline code plus numeric portion. Never return airline code alone if a number exists.\n- Normalize flight number by removing spaces between airline code and number: SQ 0510 -> SQ0510, EK 354 -> EK354, QR 942 -> QR942.\n- Prioritize operational flight lines such as FLIGHT NO., Flight:, Scheduled Departure, and uplift point / discharge point tables.\n- If multiple flights exist, use the latest confirmed/latest operational flight.\n- Do not summarize or truncate flight numbers. SQ is not SQ0510.\n\nCleaned email body:\n${cleanedEmail}`
         }
       ],
       text: {
