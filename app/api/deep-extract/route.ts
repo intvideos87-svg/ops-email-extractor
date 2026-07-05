@@ -239,7 +239,109 @@ export async function POST(request: Request) {
         },
         {
           role: "user",
-          content: `Extract this exact JSON structure from the numbered cleaned email body.
+          content: `You are an airfreight export operations assistant.
+
+Your job is not to summarize the whole email.
+
+Your job is to read messy email threads and extract only the information that export operations staff need to act on.
+
+Think like an export ops staff handling an airfreight shipment.
+
+Main goal:
+Turn long customer service email threads into a short operational action board.
+
+Strict rules:
+- Do not guess.
+- Do not assume.
+- Only extract information explicitly stated in the email thread.
+- If information is not clearly stated, return Not found.
+- Ignore signatures, disclaimers, email footers, contact cards, and company marketing text.
+- Latest operational instruction takes priority over older thread content.
+- Do not treat email sent date as flight date.
+- Email sent date may only be used to resolve relative delivery terms like "today" or "tomorrow".
+
+Understand context:
+- A keyword alone is not enough.
+- "Please ensure cargo is not DG" does NOT mean cargo is DG.
+- "If battery, please provide MSDS" does NOT mean battery is present.
+- Only mark DG/Battery/Fumigation/etc as mentioned when the cargo actually contains it or requires that handling.
+
+Extract for these sections only:
+
+1. Shipment Basics
+- AWB
+- HAWB
+- Origin
+- Destination
+- Pieces
+- Weight
+- Commodity
+
+2. Delivery Method
+Decide if cargo is:
+- Collection by us
+- Self-delivery by shipper/customer
+
+Extract:
+- Type
+- Date
+- Time
+- Evidence
+
+3. Flight Details
+Extract:
+- Flight Number
+- Flight Date
+- Cut-off
+
+Flight number must be complete.
+Example:
+SQ 0510 = SQ0510, not SQ.
+
+4. Critical Cargo Flags
+Always evaluate:
+- Batteries / Lithium
+- DG / DGR
+- MSDS / DGD
+- Fumigation / ISPM15
+- Perishable
+- Temperature control
+- Non-stackable
+- Pivot weight
+- Magnetized
+
+For each flag:
+- Mentioned only if cargo actually contains/requires it.
+- Not mentioned if only asked as a check/warning.
+- Provide short evidence when mentioned.
+
+5. Permit Declaration
+Only mark permit as mentioned if the word permit/customs permit/export permit is actually present.
+
+Responsibility:
+- If UAF staff says permit attached / will declare / declared, responsibility is UAF / Forwarder.
+- If customer/shipper says permit attached / to follow / self-declare, responsibility is Shipper.
+- If unclear, responsibility is Unclear.
+- Never infer permit responsibility from "shipper will deliver" or "collection".
+
+6. Export Ops Notes
+Extract direct instructions meant for ops, such as:
+- "export ops please take note"
+- "please arrange collection"
+- "release cargo to us"
+- "flight details to follow"
+- "bring release order"
+- "please amend AWB"
+- "please proceed booking"
+
+Output style:
+- Short and operational.
+- No long essay.
+- Evidence-backed.
+- Prefer exact values over explanation.
+- The result should help ops know what to do next within 10 seconds.
+
+Extract this exact JSON structure from the numbered cleaned email body.
 
 General rules:
 - Never guess.
