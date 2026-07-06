@@ -415,24 +415,11 @@ export default function Home() {
               <span className="eyebrow">Input</span>
               <h2>Email Thread</h2>
             </div>
-            {fileName && <span className="fileBadge">{fileName}</span>}
           </div>
 
-          <div
-            className={`dropZone ${isDragging ? "dragging" : ""}`}
-            onDragOver={(event) => {
-              event.preventDefault();
-              setIsDragging(true);
-            }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={onDrop}
-          >
-            <input ref={fileInputRef} type="file" accept=".txt,.eml" onChange={onFileChange} />
-            <button className="secondaryButton" type="button" onClick={() => fileInputRef.current?.click()}>
-              Upload .txt / .eml
-            </button>
-            <span>or drag and drop file here</span>
-          </div>
+          <p className="pasteInstruction">
+            <strong>How to use:</strong> Open your Email thread, press Ctrl + A, then Ctrl + C, and paste it below.
+          </p>
 
           <textarea
             value={emailText}

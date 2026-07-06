@@ -209,6 +209,18 @@ button:disabled {
   font-size: 13px;
 }
 
+.pasteInstruction {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.pasteInstruction strong {
+  color: var(--ink);
+  font-weight: 800;
+}
+
 textarea {
   width: 100%;
   min-height: 560px;
