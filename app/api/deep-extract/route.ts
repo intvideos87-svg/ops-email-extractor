@@ -101,6 +101,14 @@ function normalizeString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function extractAwb(value: string) {
+  return value.match(/\b\d{3}-\d{8}\b/)?.[0] || null;
+}
+
+function extractHawb(value: string) {
+  return value.match(/\b(?:HAWB\s*#?|HAWB:|House\s+AWB|HBL)\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{4,})\b/i)?.[1] || null;
+}
+
 function normalizeFlag(value: any) {
   const mentioned = value?.status === "Mentioned";
   const evidence = normalizeString(value?.evidence);
@@ -162,13 +170,15 @@ function lineNumberEmail(text: string) {
     .join("\n");
 }
 
-function normalizeResult(result: any) {
+function normalizeResult(result: any, cleanedEmail: string) {
   const permitMentioned = result?.permit_declaration?.mentioned === true;
+  const awb = normalizeString(result?.shipment_basics?.awb) || extractAwb(cleanedEmail);
+  const hawb = normalizeString(result?.shipment_basics?.hawb) || extractHawb(cleanedEmail);
 
   return {
     shipment_basics: {
-      awb: normalizeString(result?.shipment_basics?.awb),
-      hawb: normalizeString(result?.shipment_basics?.hawb),
+      awb,
+      hawb,
       origin: normalizeString(result?.shipment_basics?.origin),
       destination: normalizeString(result?.shipment_basics?.destination),
       pieces: normalizePieces(result?.shipment_basics?.pieces),
@@ -276,6 +286,13 @@ Extract for these sections only:
 - Pieces
 - Weight
 - Commodity
+
+Subject/header rule:
+- Subject line is operational data and must be checked first for AWB, HAWB, route, and weight.
+- Always analyze email headers and subject line for AWB/HAWB.
+- AWB / MAWB must match 3 digits, hyphen, 8 digits, e.g. 157-50081673, 618-54932150, 023-02781166.
+- HAWB must be detected after HAWB #, HAWB#, HAWB:, House AWB, or HBL.
+- Example: "157-50081673 // HAWB #SGMCT2607001" means AWB "157-50081673" and HAWB "SGMCT2607001".
 
 2. Delivery Method
 Decide if cargo is:
@@ -436,5 +453,5 @@ ${numberedEmail}`
   }
 
   const parsed = JSON.parse(outputText);
-  return NextResponse.json({ result: normalizeResult(parsed) });
+  return NextResponse.json({ result: normalizeResult(parsed, cleanedEmail) });
 }

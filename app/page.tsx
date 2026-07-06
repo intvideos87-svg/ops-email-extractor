@@ -63,6 +63,8 @@ type AiExtractionResult = {
 };
 
 const emptyValue = "Not found";
+const awbPattern = /\b\d{3}-\d{8}\b/;
+const hawbPattern = /\b(?:HAWB\s*#?|HAWB:|House AWB|HBL)\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{4,})\b/i;
 
 function cleanValue(value: string) {
   return value
@@ -132,6 +134,24 @@ function cleanEmailForAnalysis(input: string) {
     }
 
     if (skippingFooter) continue;
+
+    const subject = line.match(/^subject:\s*(.+)$/i)?.[1];
+    if (subject) {
+      const awb = subject.match(awbPattern)?.[0];
+      const hawb = subject.match(hawbPattern)?.[1];
+      if (awb) cleanedLines.push(`Subject AWB: ${awb}`);
+      if (hawb) cleanedLines.push(`Subject HAWB: ${hawb}`);
+      continue;
+    }
+
+    if (isHeaderLine(line)) {
+      const awb = line.match(awbPattern)?.[0];
+      const hawb = line.match(hawbPattern)?.[1];
+      if (awb) cleanedLines.push(`Header AWB: ${awb}`);
+      if (hawb) cleanedLines.push(`Header HAWB: ${hawb}`);
+      continue;
+    }
+
     if (isHeaderLine(line) || isFooterNoise(line)) continue;
 
     if (isFooterStart(line)) {
