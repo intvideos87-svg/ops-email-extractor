@@ -170,6 +170,47 @@ function lineNumberEmail(text: string) {
     .join("\n");
 }
 
+function cleanOpsInstruction(value: string) {
+  const cleaned = value
+    .replace(/^[@\s]*(export ops|ops team|ops please|export please)\b[:,\-\s]*/i, "")
+    .replace(/^(pls|please)\s+take\s+note[:,\-\s]*/i, "")
+    .replace(/^(pls|please|kindly)\s+/i, "")
+    .trim();
+  return cleaned ? `${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}` : "";
+}
+
+function splitOpsInstructions(value: string) {
+  return value
+    .split(/(?<=[.!?])\s+(?=[A-Z])/)
+    .map((sentence) => cleanOpsInstruction(sentence).replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+function extractExportOpsNotes(cleanedEmail: string) {
+  const trigger = /(@export ops|\bexport ops\b|\bops team\b|\bops please\b|\bexport please\b|\bpls take note\b|\bplease take note\b|\bplease arrange\b|\bplease proceed\b|\bkindly proceed\b)/i;
+  const notes: string[] = [];
+
+  for (const rawLine of cleanedEmail.split("\n")) {
+    const line = rawLine.trim();
+    if (!trigger.test(line)) continue;
+    notes.push(...splitOpsInstructions(line));
+  }
+
+  return notes;
+}
+
+function mergeExportOpsNotes(aiNotes: unknown, cleanedEmail: string) {
+  const notes = Array.isArray(aiNotes) ? aiNotes.filter((note: unknown) => typeof note === "string" && note.trim()).map((note: string) => note.trim()) : [];
+
+  for (const note of extractExportOpsNotes(cleanedEmail)) {
+    if (!notes.some((existing) => existing.toLowerCase() === note.toLowerCase())) {
+      notes.push(note);
+    }
+  }
+
+  return notes;
+}
+
 function normalizeResult(result: any, cleanedEmail: string) {
   const permitMentioned = result?.permit_declaration?.mentioned === true;
   const awb = normalizeString(result?.shipment_basics?.awb) || extractAwb(cleanedEmail);
@@ -213,7 +254,7 @@ function normalizeResult(result: any, cleanedEmail: string) {
       responsibility: normalizeResponsibility(result?.permit_declaration?.responsibility, permitMentioned),
       evidence: permitMentioned ? normalizeString(result?.permit_declaration?.evidence) : null
     },
-    export_ops_notes: Array.isArray(result?.export_ops_notes) ? result.export_ops_notes.filter((note: unknown) => typeof note === "string" && note.trim()).map((note: string) => note.trim()) : []
+    export_ops_notes: mergeExportOpsNotes(result?.export_ops_notes, cleanedEmail)
   };
 }
 
