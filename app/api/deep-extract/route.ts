@@ -172,28 +172,39 @@ function lineNumberEmail(text: string) {
 
 function cleanOpsInstruction(value: string) {
   const cleaned = value
-    .replace(/^[@\s]*(export ops|ops team|ops please|export please)\b[:,\-\s]*/i, "")
+    .replace(/^[@\s]*(export ops|export team|ops team|ops please|export please|@export|export@uafsin\.com\.sg|dear export|attention export ops|fyi export team|export)\b[:,\-\s]*/i, "")
     .replace(/^(pls|please)\s+take\s+note[:,\-\s]*/i, "")
-    .replace(/^(pls|please|kindly)\s+/i, "")
     .trim();
   return cleaned ? `${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}` : "";
 }
 
 function splitOpsInstructions(value: string) {
   return value
-    .split(/(?<=[.!?])\s+(?=[A-Z])/)
+    .split(/(?<=[.!?])\s+(?=[A-Z@])|(?:\s+and\s+)(?=(?:please|kindly|pls)\b)/i)
     .map((sentence) => cleanOpsInstruction(sentence).replace(/\s+/g, " ").trim())
     .filter(Boolean);
 }
 
 function extractExportOpsNotes(cleanedEmail: string) {
-  const trigger = /(@export ops|\bexport ops\b|\bops team\b|\bops please\b|\bexport please\b|\bpls take note\b|\bplease take note\b|\bplease arrange\b|\bplease proceed\b|\bkindly proceed\b)/i;
+  const exportReference = /(@export(?:\b|\s+ops)|export@uafsin\.com\.sg|\bexport ops\b|\bexport team\b|\bdear export\b|\battention export ops\b|\bfyi export team\b|\bexport,\s*(?:pls|please|kindly)\b|\badvise export to\b)/i;
+  const generalOpsTrigger = /(\bops team\b|\bops please\b|\bexport please\b|\bpls take note\b|\bplease take note\b|\bplease arrange\b|\bplease proceed\b|\bkindly proceed\b)/i;
+  const operationalInstruction = /\b(pls|please|kindly|advise|arrange|proceed|book|booking|secure|space|collection|collect|pickup|release|amend|bring|take note|attached|follow|deliver|truck|lodge|declare|submit|prepare|coordinate|confirm)\b/i;
   const notes: string[] = [];
+  let exportAddressed = false;
 
   for (const rawLine of cleanedEmail.split("\n")) {
     const line = rawLine.trim();
-    if (!trigger.test(line)) continue;
+    if (/^(to|cc|bcc):/i.test(line)) continue;
+
+    if (exportReference.test(line) || generalOpsTrigger.test(line)) {
+      exportAddressed = true;
+      if (!operationalInstruction.test(line)) continue;
+    } else if (!exportAddressed || !operationalInstruction.test(line)) {
+      continue;
+    }
+
     notes.push(...splitOpsInstructions(line));
+    exportAddressed = false;
   }
 
   return notes;
