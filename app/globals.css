@@ -210,15 +210,61 @@ button:disabled {
 }
 
 .pasteInstruction {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
   margin: 0 0 12px;
-  color: var(--muted);
+  border: 1px solid #d9e5f2;
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: #f3f8fd;
+  color: #405065;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.4;
 }
 
 .pasteInstruction strong {
   color: var(--ink);
   font-weight: 800;
+}
+
+.pasteInstruction ol {
+  display: grid;
+  gap: 3px;
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.pasteInstruction li {
+  padding-left: 2px;
+}
+
+.pasteInstruction kbd {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border: 1px solid #c8d6e6;
+  border-radius: 999px;
+  padding: 1px 8px;
+  background: #fff;
+  color: #223047;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  box-shadow: 0 1px 0 rgba(34, 48, 71, 0.08);
+}
+
+.infoIcon {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4f8f;
+  font-size: 14px;
+  font-weight: 900;
 }
 
 textarea {

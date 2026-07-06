@@ -417,9 +417,18 @@ export default function Home() {
             </div>
           </div>
 
-          <p className="pasteInstruction">
-            <strong>How to use:</strong> Open your Email thread, press Ctrl + A, then Ctrl + C, and paste it below.
-          </p>
+          <div className="pasteInstruction">
+            <span className="infoIcon" aria-hidden="true">i</span>
+            <div>
+              <strong>How to use</strong>
+              <ol>
+                <li>Open the Outlook email thread.</li>
+                <li>Press <kbd>Ctrl + A</kbd> to select all.</li>
+                <li>Press <kbd>Ctrl + C</kbd> to copy.</li>
+                <li>Paste the email thread into the box below.</li>
+              </ol>
+            </div>
+          </div>
 
           <textarea
             value={emailText}
