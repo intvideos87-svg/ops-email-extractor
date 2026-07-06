@@ -56,17 +56,17 @@ button:disabled {
 
 .app {
   min-height: 100vh;
-  padding: 22px;
+  padding: 18px;
 }
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  max-width: 1480px;
-  margin: 0 auto 18px;
-  padding: 14px 16px;
+  gap: 20px;
+  max-width: 1320px;
+  margin: 0 auto 14px;
+  padding: 11px 14px;
   border: 1px solid var(--line);
   border-left: 5px solid var(--red);
   border-radius: 8px;
@@ -77,13 +77,13 @@ button:disabled {
 .brand {
   display: flex;
   align-items: center;
-  gap: 13px;
+  gap: 11px;
   min-width: 280px;
 }
 
 .brand img {
-  width: 46px;
-  height: 46px;
+  width: 42px;
+  height: 42px;
   object-fit: contain;
   flex: 0 0 auto;
 }
@@ -108,7 +108,7 @@ button:disabled {
 
 .titleBlock h1 {
   margin: 0;
-  font-size: 27px;
+  font-size: 25px;
   letter-spacing: 0;
 }
 
@@ -120,8 +120,8 @@ button:disabled {
 .workspace {
   display: grid;
   grid-template-columns: minmax(380px, 0.82fr) minmax(560px, 1.18fr);
-  gap: 18px;
-  max-width: 1480px;
+  gap: 15px;
+  max-width: 1320px;
   margin: 0 auto;
 }
 
@@ -135,7 +135,7 @@ button:disabled {
 
 .inputPanel,
 .outputPanel {
-  padding: 18px;
+  padding: 15px;
 }
 
 .panelHeader,
@@ -143,8 +143,8 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
+  gap: 10px;
+  margin-bottom: 11px;
 }
 
 .panelHeader h2,
@@ -212,11 +212,11 @@ button:disabled {
 .pasteInstruction {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
-  gap: 10px;
-  margin: 0 0 12px;
+  gap: 9px;
+  margin: 0 0 10px;
   border: 1px solid #d9e5f2;
   border-radius: 8px;
-  padding: 11px 12px;
+  padding: 9px 11px;
   background: #f3f8fd;
   color: #405065;
   font-size: 13px;
@@ -230,8 +230,8 @@ button:disabled {
 
 .pasteInstruction ol {
   display: grid;
-  gap: 3px;
-  margin: 6px 0 0;
+  gap: 2px;
+  margin: 5px 0 0;
   padding-left: 18px;
 }
 
@@ -269,11 +269,11 @@ button:disabled {
 
 textarea {
   width: 100%;
-  min-height: 560px;
+  min-height: 485px;
   resize: vertical;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 14px;
+  padding: 12px;
   background: #fbfcfe;
   color: var(--ink);
   line-height: 1.5;
@@ -286,10 +286,10 @@ textarea:focus {
 }
 
 .notice {
-  margin-top: 12px;
+  margin-top: 10px;
   border-left: 4px solid var(--red);
   border-radius: 8px;
-  padding: 11px 12px;
+  padding: 10px 11px;
   background: #fff6f7;
   color: #5d1118;
   font-size: 14px;
@@ -304,7 +304,7 @@ textarea:focus {
 }
 
 .actions {
-  margin-top: 14px;
+  margin-top: 12px;
 }
 
 .secondaryButton {
@@ -333,10 +333,10 @@ textarea:focus {
 .emptyState {
   display: grid;
   place-items: center;
-  min-height: 680px;
+  min-height: 590px;
   border: 1px dashed #cbd3dc;
   border-radius: 8px;
-  padding: 24px;
+  padding: 20px;
   text-align: center;
   background: #fbfcfd;
 }
@@ -365,14 +365,14 @@ textarea:focus {
 .results {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 12px;
 }
 
 .card {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 14px;
+  padding: 12px;
   background: #fff;
 }
 
@@ -414,8 +414,8 @@ textarea:focus {
   grid-template-columns: minmax(130px, 0.8fr) minmax(160px, 1.2fr) 92px;
   gap: 10px;
   align-items: center;
-  min-height: 42px;
-  padding: 9px 10px;
+  min-height: 37px;
+  padding: 8px 9px;
   border-bottom: 1px solid #e7ebf0;
   font-size: 13px;
 }
@@ -451,24 +451,24 @@ textarea:focus {
 .flagGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
 .flagItem {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
-  min-height: 84px;
+  gap: 8px;
+  min-height: 74px;
   border: 1px solid #e4e9ef;
   border-radius: 8px;
-  padding: 11px;
+  padding: 10px;
   background: #fbfcfd;
 }
 
 .flagButton {
   width: 100%;
-  min-height: 84px;
+  min-height: 74px;
   color: var(--ink);
   font-weight: 400;
   text-align: left;
@@ -490,7 +490,7 @@ textarea:focus {
 
 .flagItem strong {
   display: block;
-  margin-bottom: 5px;
+  margin-bottom: 4px;
   font-size: 13px;
 }
 
@@ -559,7 +559,7 @@ textarea:focus {
 
 .checklist {
   display: grid;
-  gap: 9px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -567,11 +567,11 @@ textarea:focus {
 
 .checklist li {
   position: relative;
-  min-height: 36px;
+  min-height: 32px;
   border: 1px solid #e4e9ef;
   border-left: 4px solid var(--red);
   border-radius: 8px;
-  padding: 9px 10px 9px 13px;
+  padding: 8px 9px 8px 12px;
   background: #fbfcfd;
   font-size: 13px;
   font-weight: 700;
