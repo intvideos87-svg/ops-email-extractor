@@ -441,7 +441,7 @@ export default function Home() {
 
           <div className="actions">
             <button type="button" onClick={runExtraction} disabled={isExtracting}>
-              {isExtracting ? "Extracting..." : "Extract Ops Details"}
+              {isExtracting ? "Extracting..." : "Extract"}
             </button>
             <button className="ghostButton" type="button" onClick={clearAll}>
               Clear / Reset
