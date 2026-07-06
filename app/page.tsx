@@ -424,7 +424,7 @@ export default function Home() {
           <textarea
             value={emailText}
             onChange={(event) => setEmailText(event.target.value)}
-            placeholder="Paste the full customer service email thread here..."
+            placeholder="Paste email thread here..."
             spellCheck={false}
           />
 
