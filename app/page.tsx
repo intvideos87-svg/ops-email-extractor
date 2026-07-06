@@ -503,6 +503,8 @@ export default function Home() {
                 </div>
               </article>
 
+              <FlagsCard flags={result.critical_flags} onSelect={setSelectedFlag} />
+
               <article className="card wide">
                 <div className="cardTitle">
                   <h3>Export Ops Notes</h3>
@@ -518,8 +520,6 @@ export default function Home() {
                   <p className="quietText">No direct export ops notes found.</p>
                 )}
               </article>
-
-              <FlagsCard flags={result.critical_flags} onSelect={setSelectedFlag} />
 
               <details className="card wide cleanedPreview">
                 <summary>Cleaned Email Preview</summary>
