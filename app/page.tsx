@@ -459,7 +459,6 @@ export default function Home() {
               <ObjectCard title="Shipment Basics" rows={result.shipment_basics} />
               <ObjectCard title="Delivery Method" rows={result.delivery_method} />
               <ObjectCard title="Flight Details" rows={result.flight_details} />
-              <FlagsCard flags={result.critical_flags} onSelect={setSelectedFlag} />
 
               <article className="card">
                 <div className="cardTitle">
@@ -484,7 +483,7 @@ export default function Home() {
                 </div>
               </article>
 
-              <article className="card">
+              <article className="card wide">
                 <div className="cardTitle">
                   <h3>Export Ops Notes</h3>
                   <span className="count">{result.export_ops_notes.length} found</span>
@@ -499,6 +498,8 @@ export default function Home() {
                   <p className="quietText">No direct export ops notes found.</p>
                 )}
               </article>
+
+              <FlagsCard flags={result.critical_flags} onSelect={setSelectedFlag} />
 
               <details className="card wide cleanedPreview">
                 <summary>Cleaned Email Preview</summary>
